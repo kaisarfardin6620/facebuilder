@@ -11,3 +11,8 @@ class UserGoalSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserGoal
         fields = '__all__'
+
+class SetGoalsSerializer(serializers.Serializer):
+    wants_sharper_jawline = serializers.BooleanField()
+    wants_reduce_puffiness = serializers.BooleanField()
+    wants_improve_symmetry = serializers.BooleanField()        

@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/auth/', include('authentication.urls')),
     path('api/scans/', include('scans.urls')),
     path('api/workouts/', include('workouts.urls')),
+    path('api/chat/', include('chat.urls')),
 ]
 
 if settings.DEBUG:

@@ -16,6 +16,11 @@ class FaceScan(models.Model):
 
 class UserGoal(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='goals')
+    
+    wants_sharper_jawline = models.BooleanField(default=True)
+    wants_reduce_puffiness = models.BooleanField(default=True)
+    wants_improve_symmetry = models.BooleanField(default=True)
+    
     target_jawline = models.FloatField()
     target_symmetry = models.FloatField()
     target_puffiness = models.FloatField()

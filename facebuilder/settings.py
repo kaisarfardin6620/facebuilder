@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'scans',
     'workouts',
+    'chat',
 ]
 
 MIDDLEWARE = [
