@@ -20,7 +20,7 @@ class Exercise(models.Model):
         return self.name
 
 class WorkoutPlan(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='workout_plan')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='workout_plans') 
     created_at = models.DateTimeField(auto_now_add=True)
     sessions_completed_count = models.IntegerField(default=0) 
     difficulty_level = models.IntegerField(default=1)

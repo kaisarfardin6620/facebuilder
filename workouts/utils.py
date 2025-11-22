@@ -1,7 +1,7 @@
 from .models import WorkoutPlan, PlanExercise, Exercise
 
 def generate_workout_plan(user, scan_data, user_goals):
-    WorkoutPlan.objects.filter(user=user, is_active=True).update(is_active=False)
+    WorkoutPlan.objects.filter(user=user).update(is_active=False)
 
     plan = WorkoutPlan.objects.create(user=user, difficulty_level=1, is_active=True)
 
