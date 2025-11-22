@@ -7,6 +7,8 @@ from .models import OneTimePassword, User
 from .utils import send_otp_via_twilio
 import random
 from rest_framework.throttling import AnonRateThrottle
+from django.utils import timezone  # <--- Add this import
+from datetime import timedelta     # <--- Add this import
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -67,6 +69,12 @@ class VerifyOTPView(APIView):
             otp_input = serializer.data['otp']
             try:
                 otp_record = OneTimePassword.objects.get(phone_number=phone, otp=otp_input)
+                
+                expiry_time = 300 # 5 minutes in seconds
+                if (timezone.now() - otp_record.created_at).total_seconds() > expiry_time:
+                    otp_record.delete()
+                    return Response({"error": "OTP has expired. Please request a new one."}, status=status.HTTP_400_BAD_REQUEST)
+
                 user = User.objects.get(phone_number=phone)
                 user.is_active = True
                 user.save()

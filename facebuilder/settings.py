@@ -10,7 +10,12 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-DEBUG = os.getenv('DEBUG') == 'True' 
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
+DEBUG = str(os.getenv('DEBUG', 'False')).strip().lower() == 'true'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
@@ -31,6 +36,8 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'authentication',
     'corsheaders',
+    'scans',
+    'workouts',
 ]
 
 MIDDLEWARE = [
@@ -65,12 +72,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'facebuilder.wsgi.application'
 
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL')
-    )
-}
+# DATABASES = {
+#     'default': dj_database_url.config(
+#         default=os.getenv('DATABASE_URL')
+#     )
+# }
 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 
 AUTH_PASSWORD_VALIDATORS = [
