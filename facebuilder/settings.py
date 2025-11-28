@@ -21,7 +21,7 @@ TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 TWILIO_VERIFY_SERVICE_SID = os.getenv('TWILIO_VERIFY_SERVICE_SID')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 AUTH_USER_MODEL = 'authentication.User'
 
@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'scans',
     'workouts',
     'chat',
+    'dashboard',
 ]
 
 MIDDLEWARE = [

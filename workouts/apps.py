@@ -30,8 +30,10 @@ def auto_seed_exercises(sender, **kwargs):
         Generate a JSON list of 20 facial fitness exercises. 
         For each exercise, provide:
         1. "name": A short, catchy name (e.g., "Jawline Clench").
-        2. "description": A short 2-sentence instruction on how to do it.
-        3. "target_metric": Must be exactly one of these strings: "JAWLINE", "SYMMETRY", "PUFFINESS", "GENERAL".
+        2. "description": A short 1-sentence summary.
+        3. "instructions": A list of exactly 5 strings describing the steps (e.g., ["Sit up straight", "Clench jaw", "Hold for 5s", "Relax", "Repeat"]).
+        4. "default_reps": A string indicating duration or count (e.g., "15 reps" or "30s").
+        5. "target_metric": Must be exactly one of: "JAWLINE", "SYMMETRY", "PUFFINESS", "GENERAL".
         
         Ensure there are at least 5 exercises for each target_metric.
         Output only raw JSON, no markdown.
@@ -54,6 +56,8 @@ def auto_seed_exercises(sender, **kwargs):
             Exercise.objects.create(
                 name=item['name'],
                 description=item['description'],
+                instructions=item['instructions'],
+                default_reps=item['default_reps'],
                 target_metric=item['target_metric']
             )
             count += 1

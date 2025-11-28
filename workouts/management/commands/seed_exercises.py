@@ -1,5 +1,5 @@
 import json
-import os
+import re  # <--- NEW IMPORT
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from workouts.models import Exercise
@@ -11,47 +11,82 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
         if not api_key:
-            self.stdout.write(self.style.ERROR("OPENAI_API_KEY is missing in settings."))
+            self.stdout.write(self.style.ERROR("OPENAI_API_KEY is missing."))
             return
 
         client = OpenAI(api_key=api_key)
-        self.stdout.write("Contacting OpenAI to generate exercises... (This may take 10-20 seconds)")
+        self.stdout.write("Contacting OpenAI... (Waiting for response)")
 
         prompt = """
         Generate a JSON list of 20 facial fitness exercises. 
-        For each exercise, provide:
-        1. "name": A short, catchy name (e.g., "Jawline Clench").
-        2. "description": A short 2-sentence instruction on how to do it.
-        3. "target_metric": Must be exactly one of these strings: "JAWLINE", "SYMMETRY", "PUFFINESS", "GENERAL".
-        
-        Ensure there are at least 5 exercises for each target_metric.
-        Output only raw JSON, no markdown.
+        Structure:
+        [
+            {
+                "name": "Exercise Name",
+                "description": "Short summary",
+                "instructions": ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"],
+                "default_reps": "10 reps",
+                "target_metric": "JAWLINE"
+            }
+        ]
+        Target Metrics must be exactly: JAWLINE, SYMMETRY, PUFFINESS, GENERAL.
+        Return ONLY the raw JSON list. No markdown.
         """
 
         try:
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "You are a fitness API that outputs data in JSON."},
+                    {"role": "system", "content": "You are a JSON data generator."},
                     {"role": "user", "content": prompt}
                 ]
             )
 
             content = response.choices[0].message.content
-            content = content.replace("```json", "").replace("```", "")
-            exercises_data = json.loads(content)
+            
+            # --- FIX: SANITIZE THE INPUT ---
+            # 1. Remove Markdown
+            content = content.replace("```json", "").replace("```", "").strip()
+            
+            # 2. Remove Newlines inside strings (The "SYM\nMETRY" Fix)
+            # This replaces all whitespace/newlines with a single space to prevent JSON crashes
+            content = re.sub(r'\s+', ' ', content)
+            # -------------------------------
 
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                self.stdout.write(self.style.ERROR(f"JSON Parse Error: {str(e)}"))
+                return
+
+            # Smart List Finding
+            final_list = []
+            if isinstance(data, list):
+                final_list = data
+            elif isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, list):
+                        final_list = value
+                        break
+            
             count = 0
-            for item in exercises_data:
-                if not Exercise.objects.filter(name=item['name']).exists():
+            for item in final_list:
+                if not isinstance(item, dict): continue
+
+                # Fix "SYM METRY" typo if it happened during sanitization
+                metric = item.get('target_metric', 'GENERAL').replace(" ", "")
+                
+                if not Exercise.objects.filter(name=item.get('name')).exists():
                     Exercise.objects.create(
-                        name=item['name'],
-                        description=item['description'],
-                        target_metric=item['target_metric']
+                        name=item.get('name', 'Unknown'),
+                        description=item.get('description', ''),
+                        instructions=item.get('instructions', []),
+                        default_reps=item.get('default_reps', '10 reps'),
+                        target_metric=metric # Use the clean metric
                     )
                     count += 1
             
-            self.stdout.write(self.style.SUCCESS(f"Successfully added {count} new exercises from OpenAI!"))
+            self.stdout.write(self.style.SUCCESS(f"Successfully added {count} exercises!"))
 
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Failed to generate exercises: {str(e)}"))
+            self.stdout.write(self.style.ERROR(f"Critical Error: {str(e)}"))

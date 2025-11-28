@@ -31,7 +31,7 @@ def generate_workout_plan(user, scan_data, user_goals):
         PlanExercise.objects.create(
             plan=plan,
             exercise=ex,
-            reps="10 reps" if "Hold" not in ex.name else "10s hold",
+            reps=ex.default_reps,
             order=order_counter
         )
         order_counter += 1
