@@ -7,6 +7,7 @@ router.register(r'users', UserManagementViewSet, basename='admin-users')
 router.register(r'subscriptions', SubscriptionPlanViewSet, basename='admin-subscriptions')
 
 urlpatterns = [
+    path('login/', AdminLoginView.as_view(), name='admin-login'),
     path('stats/', DashboardStatsView.as_view(), name='admin-stats'),
     path('profile/', AdminProfileView.as_view(), name='admin-profile'),
     path('change-password/', AdminChangePasswordView.as_view(), name='admin-password'),

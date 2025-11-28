@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/workouts/', include('workouts.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/dashboard/', include('dashboard.urls')),
+    path('files/', include('db_file_storage.urls')),
 ]
 
 if settings.DEBUG:

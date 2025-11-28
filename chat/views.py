@@ -1,30 +1,36 @@
-from rest_framework.views import APIView
+from adrf.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
 from scans.models import FaceScan, UserGoal
-from openai import OpenAI
+from openai import AsyncOpenAI
 from .models import ChatMessage
 from .serializers import ChatMessageSerializer
+from asgiref.sync import sync_to_async
 
 class ChatCoachView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        messages = ChatMessage.objects.filter(user=request.user).order_by('created_at')
-        serializer = ChatMessageSerializer(messages, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+    async def get(self, request):
+        messages_qs = ChatMessage.objects.filter(user=request.user).order_by('created_at')
+        
+        msgs_list = []
+        async for msg in messages_qs:
+            msgs_list.append(msg)
+            
+        data = await sync_to_async(lambda: ChatMessageSerializer(msgs_list, many=True).data)()
+        return Response(data, status=status.HTTP_200_OK)
 
-    def post(self, request):
+    async def post(self, request):
         user_message = request.data.get('message')
         if not user_message:
             return Response({"error": "Message required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        ChatMessage.objects.create(user=request.user, sender='USER', message=user_message)
+        await ChatMessage.objects.acreate(user=request.user, sender='USER', message=user_message)
 
-        scan = FaceScan.objects.filter(user=request.user).last()
-        goal = UserGoal.objects.filter(user=request.user).first()
+        scan = await FaceScan.objects.filter(user=request.user).alast()
+        goal = await UserGoal.objects.filter(user=request.user).afirst()
         
         context_str = "User Data: "
         if scan:
@@ -32,10 +38,10 @@ class ChatCoachView(APIView):
         if goal:
             context_str += f"Targets: Jaw {goal.target_jawline}, Sym {goal.target_symmetry}. "
 
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         
         try:
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": f"You are FaceCoach. User stats: {context_str}. Keep answers short, motivating, and focused on facial fitness."},
@@ -45,7 +51,7 @@ class ChatCoachView(APIView):
             
             ai_reply = response.choices[0].message.content
 
-            ChatMessage.objects.create(user=request.user, sender='AI', message=ai_reply)
+            await ChatMessage.objects.acreate(user=request.user, sender='AI', message=ai_reply)
 
             return Response({"reply": ai_reply}, status=status.HTTP_200_OK)
             

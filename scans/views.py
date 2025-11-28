@@ -1,26 +1,30 @@
-from rest_framework.views import APIView
+from adrf.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from asgiref.sync import sync_to_async
 from .models import FaceScan, UserGoal
 from .serializers import FaceScanSerializer, SetGoalsSerializer
 from .ai_logic import analyze_face_image
 from workouts.utils import generate_workout_plan
 
+analyze_face_async = sync_to_async(analyze_face_image, thread_sensitive=False)
+generate_plan_async = sync_to_async(generate_workout_plan)
+
 class ScanFaceView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    async def post(self, request):
         if 'image' not in request.FILES:
             return Response({"error": "No image provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         image_file = request.FILES['image']
         
         try:
-            metrics = analyze_face_image(image_file)
+            metrics = await analyze_face_async(image_file)
             image_file.seek(0) 
 
-            scan = FaceScan.objects.create(
+            scan = await FaceScan.objects.acreate(
                 user=request.user,
                 image=image_file,
                 jawline_angle=metrics['jawline_angle'],
@@ -28,7 +32,7 @@ class ScanFaceView(APIView):
                 puffiness_index=metrics['puffiness_index']
             )
             
-            UserGoal.objects.update_or_create(
+            await UserGoal.objects.aupdate_or_create(
                 user=request.user,
                 defaults={
                     'target_jawline': round(metrics['jawline_angle'] * 0.95, 1),
@@ -52,18 +56,18 @@ class ScanFaceView(APIView):
 class SetGoalsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    async def post(self, request):
         serializer = SetGoalsSerializer(data=request.data)
         if serializer.is_valid():
-            goal, _ = UserGoal.objects.get_or_create(user=request.user)
+            goal, _ = await UserGoal.objects.aget_or_create(user=request.user)
             goal.wants_sharper_jawline = serializer.data['wants_sharper_jawline']
             goal.wants_reduce_puffiness = serializer.data['wants_reduce_puffiness']
             goal.wants_improve_symmetry = serializer.data['wants_improve_symmetry']
-            goal.save()
+            await goal.asave()
 
-            latest_scan = FaceScan.objects.filter(user=request.user).last()
+            latest_scan = await FaceScan.objects.filter(user=request.user).alast()
             if latest_scan:
-                generate_workout_plan(request.user, latest_scan, goal)
+                await generate_plan_async(request.user, latest_scan, goal)
                 return Response({"message": "Goals set and Workout Plan generated!"}, status=status.HTTP_200_OK)
             
             return Response({"error": "No scan found"}, status=status.HTTP_404_NOT_FOUND)

@@ -1,0 +1,83 @@
+import json
+from channels.generic.websocket import AsyncWebsocketConsumer
+from openai import AsyncOpenAI
+from django.conf import settings
+from channels.db import database_sync_to_async
+from .models import ChatMessage
+from scans.models import FaceScan, UserGoal
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope["user"]
+        
+        if self.user.is_anonymous:
+            await self.close()
+        else:
+            await self.accept()
+            
+            if not await self.has_chat_history():
+                greeting_text = f"Hi {self.user.name}! I'm FaceCoach. Ask me anything about your routine or scans."
+                
+                await self.save_message(self.user, 'AI', greeting_text)
+                
+                await self.send(text_data=json.dumps({
+                    'sender': 'AI',
+                    'message': greeting_text
+                }))
+
+    async def disconnect(self, close_code):
+        pass
+
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        user_message = data.get('message')
+
+        if not user_message:
+            return
+
+        await self.save_message(self.user, 'USER', user_message)
+
+        context_str = await self.get_user_context()
+
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": f"You are FaceCoach. User Data: {context_str}. Keep answers short."},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            ai_reply = response.choices[0].message.content
+
+            await self.save_message(self.user, 'AI', ai_reply)
+
+            await self.send(text_data=json.dumps({
+                'sender': 'AI',
+                'message': ai_reply
+            }))
+
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'error': str(e)
+            }))
+
+    @database_sync_to_async
+    def save_message(self, user, sender, message):
+        return ChatMessage.objects.create(user=user, sender=sender, message=message)
+
+    @database_sync_to_async
+    def has_chat_history(self):
+        return ChatMessage.objects.filter(user=self.user).exists()
+
+    @database_sync_to_async
+    def get_user_context(self):
+        scan = FaceScan.objects.filter(user=self.user).last()
+        goal = UserGoal.objects.filter(user=self.user).first()
+        context = ""
+        if scan:
+            context += f"Jaw: {scan.jawline_angle}, Sym: {scan.symmetry_score}%. "
+        if goal:
+            context += f"Targets: Jaw {goal.target_jawline}. "
+        return context

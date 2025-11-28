@@ -26,6 +26,8 @@ ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 AUTH_USER_MODEL = 'authentication.User'
 
 INSTALLED_APPS = [
+    'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -34,13 +36,16 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework.authtoken',
-    'authentication',
     'corsheaders',
+    'db_file_storage',
+    'authentication',
     'scans',
     'workouts',
     'chat',
     'dashboard',
 ]
+
+DEFAULT_FILE_STORAGE = 'db_file_storage.storage.DatabaseFileStorage'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -52,6 +57,17 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv('REDIS_URL', 'redis://127.0.0.1:6379')],
+        },
+    },
+}
+
+
 CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = 'facebuilder.urls'
@@ -71,7 +87,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'facebuilder.wsgi.application'
+ASGI_APPLICATION = 'facebuilder.asgi.application'
 
 
 # DATABASES = {

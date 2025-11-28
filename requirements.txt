@@ -176,3 +176,10 @@ zstandard==0.23.0
 mediapipe
 opencv-python
 numpy
+channels
+daphne
+channels_redis
+uvicorn
+adrf
+httpx
+django-db-file-storage
