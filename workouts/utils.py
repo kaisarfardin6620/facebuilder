@@ -28,10 +28,16 @@ def generate_workout_plan(user, scan_data, user_goals):
 
     order_counter = 1
     for ex in unique_exercises:
+        if order_counter == 1:
+            duration = 10 + ((plan.difficulty_level - 1) * 5)
+            reps_value = f"{duration}s"
+        else:
+            reps_value = ex.default_reps
+
         PlanExercise.objects.create(
             plan=plan,
             exercise=ex,
-            reps=ex.default_reps,
+            reps=reps_value,
             order=order_counter
         )
         order_counter += 1
