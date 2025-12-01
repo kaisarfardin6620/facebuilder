@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 from datetime import timedelta
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -43,7 +44,12 @@ INSTALLED_APPS = [
     'workouts',
     'chat',
     'dashboard',
+    'payments',
 ]
+
+REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
+REVENUECAT_BASE_URL = "https://api.revenuecat.com/v1"
+REVENUECAT_ENTITLEMENT_ID = os.getenv('REVENUECAT_ENTITLEMENT_ID', 'premium')
 
 DEFAULT_FILE_STORAGE = 'db_file_storage.storage.DatabaseFileStorage'
 
@@ -67,8 +73,18 @@ CHANNEL_LAYERS = {
     },
 }
 
+CORS_ALLOW_ALL_ORIGINS = DEBUG 
 
-CORS_ALLOW_ALL_ORIGINS = True
+if not CORS_ALLOW_ALL_ORIGINS:
+    CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'authorization',
+    'content-disposition',
+]
+
+CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "http://127.0.0.1,http://localhost").split(",")
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'facebuilder.urls'
 
@@ -89,7 +105,6 @@ TEMPLATES = [
 
 ASGI_APPLICATION = 'facebuilder.asgi.application'
 
-
 # DATABASES = {
 #     'default': dj_database_url.config(
 #         default=os.getenv('DATABASE_URL')
@@ -102,7 +117,6 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -119,8 +133,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-
 LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
@@ -129,13 +141,9 @@ USE_I18N = True
 
 USE_TZ = True
 
-
-
 STATIC_URL = 'static/'
 
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -155,11 +163,10 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=30),  
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),     
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
-
 
 LOGGING = {
     'version': 1,

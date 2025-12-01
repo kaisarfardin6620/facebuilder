@@ -7,6 +7,7 @@ from .models import FaceScan, UserGoal
 from .serializers import FaceScanSerializer, SetGoalsSerializer
 from .ai_logic import analyze_face_image
 from workouts.utils import generate_workout_plan
+from payments.services import verify_subscription_status
 
 analyze_face_async = sync_to_async(analyze_face_image, thread_sensitive=False)
 generate_plan_async = sync_to_async(generate_workout_plan)
@@ -21,6 +22,7 @@ class ScanFaceView(APIView):
         image_file = request.FILES['image']
         
         try:
+            # 1. Run AI (Free for everyone - The Hook)
             metrics = await analyze_face_async(image_file)
             image_file.seek(0) 
 
@@ -42,6 +44,8 @@ class ScanFaceView(APIView):
             )
             
             serializer = FaceScanSerializer(scan)
+            
+            # Return Full Data (No locks here)
             return Response({
                 "message": "Scan complete. Please set goals.",
                 "scan_data": serializer.data
@@ -59,16 +63,25 @@ class SetGoalsView(APIView):
     async def post(self, request):
         serializer = SetGoalsSerializer(data=request.data)
         if serializer.is_valid():
+            # 1. Save User Preferences
             goal, _ = await UserGoal.objects.aget_or_create(user=request.user)
             goal.wants_sharper_jawline = serializer.data['wants_sharper_jawline']
             goal.wants_reduce_puffiness = serializer.data['wants_reduce_puffiness']
             goal.wants_improve_symmetry = serializer.data['wants_improve_symmetry']
             await goal.asave()
 
+            # 2. Generate Plan (We create it even for free users, but they can't access it yet)
             latest_scan = await FaceScan.objects.filter(user=request.user).alast()
             if latest_scan:
                 await generate_plan_async(request.user, latest_scan, goal)
-                return Response({"message": "Goals set and Workout Plan generated!"}, status=status.HTTP_200_OK)
+                
+                # 3. CHECK PAYMENT STATUS NOW
+                is_premium = await verify_subscription_status(request.user)
+
+                return Response({
+                    "message": "Goals set and Plan generated.",
+                    "is_premium": is_premium # <--- Frontend Logic: If False -> Redirect to Paywall
+                }, status=status.HTTP_200_OK)
             
             return Response({"error": "No scan found"}, status=status.HTTP_404_NOT_FOUND)
             

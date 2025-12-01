@@ -1,6 +1,8 @@
 import sys
 import os
 import json
+import re
+import time
 from django.apps import AppConfig
 from django.db.models.signals import post_migrate
 
@@ -9,63 +11,86 @@ def auto_seed_exercises(sender, **kwargs):
     from django.conf import settings
     
     try:
-        if Exercise.objects.exists():
-            return
+        current_count = Exercise.objects.count()
     except Exception:
         return
 
-    print("--------- INITIALIZING AI DATA SEEDING ---------")
-    print("Database is empty. Asking OpenAI for exercises...")
+    target_total = 100
+    if current_count >= target_total:
+        return
+
+    print(f"--------- INITIALIZING AI DATA SEEDING ({current_count}/{target_total}) ---------")
 
     api_key = settings.OPENAI_API_KEY
     if not api_key:
-        print("ERROR: OPENAI_API_KEY is missing. Cannot seed data.")
+        print("ERROR: OPENAI_API_KEY is missing.")
         return
 
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
 
-        prompt = """
-        Generate a JSON list of 20 facial fitness exercises. 
-        For each exercise, provide:
-        1. "name": A short, catchy name (e.g., "Jawline Clench").
-        2. "description": A short 1-sentence summary.
-        3. "instructions": A list of exactly 5 strings describing the steps (e.g., ["Sit up straight", "Clench jaw", "Hold for 5s", "Relax", "Repeat"]).
-        4. "default_reps": A string indicating duration or count (e.g., "15 reps" or "30s").
-        5. "target_metric": Must be exactly one of: "JAWLINE", "SYMMETRY", "PUFFINESS", "GENERAL".
+        while current_count < target_total:
+            batch_size = 20
+            print(f"Fetching batch of {batch_size} exercises...")
+
+            prompt = f"""
+            Generate a JSON list of {batch_size} UNIQUE facial fitness exercises.
+            Mix: JAWLINE, SYMMETRY, PUFFINESS, GENERAL.
+            Structure: [{{"name": "...", "description": "...", "instructions": ["step1", "step2", "step3", "step4", "step5"], "default_reps": "10s", "target_metric": "JAWLINE"}}]
+            Return raw JSON only.
+            """
+
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+
+                content = response.choices[0].message.content
+                content = content.replace("```json", "").replace("```", "").strip()
+                content = re.sub(r'\s+', ' ', content)
+
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    continue
+
+                final_list = []
+                if isinstance(data, list):
+                    final_list = data
+                elif isinstance(data, dict):
+                    for k, v in data.items():
+                        if isinstance(v, list): 
+                            final_list = v
+                            break
+                
+                for item in final_list:
+                    if not isinstance(item, dict): continue
+                    
+                    metric = item.get('target_metric', 'GENERAL').replace(" ", "")
+                    name = item.get('name', 'Unknown')
+
+                    if not Exercise.objects.filter(name=name).exists():
+                        Exercise.objects.create(
+                            name=name,
+                            description=item.get('description', ''),
+                            instructions=item.get('instructions', []),
+                            default_reps=item.get('default_reps', '10 reps'),
+                            target_metric=metric
+                        )
+                
+                current_count = Exercise.objects.count()
+                time.sleep(1)
+
+            except Exception as e:
+                print(f"Batch failed: {str(e)}")
+                break
         
-        Ensure there are at least 5 exercises for each target_metric.
-        Output only raw JSON, no markdown.
-        """
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a fitness API that outputs data in JSON."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-
-        content = response.choices[0].message.content
-        content = content.replace("```json", "").replace("```", "")
-        exercises_data = json.loads(content)
-
-        count = 0
-        for item in exercises_data:
-            Exercise.objects.create(
-                name=item['name'],
-                description=item['description'],
-                instructions=item['instructions'],
-                default_reps=item['default_reps'],
-                target_metric=item['target_metric']
-            )
-            count += 1
-        
-        print(f"SUCCESS: Automatically created {count} exercises!")
+        print(f"SUCCESS! Total Exercises: {current_count}")
 
     except Exception as e:
-        print(f"ERROR: Auto-seeding failed: {e}")
+        print(f"Critical Error: {str(e)}")
 
 class WorkoutsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'

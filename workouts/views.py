@@ -8,6 +8,9 @@ from scans.models import FaceScan, UserGoal
 from scans.serializers import FaceScanSerializer
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+import datetime
+from payments.services import verify_subscription_status
 
 User = get_user_model()
 
@@ -15,17 +18,30 @@ class MyPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def get(self, request):
+        # 1. BARRIER: Check Payment
+        is_premium = await verify_subscription_status(request.user)
+        if not is_premium:
+            return Response({
+                "error": "PAYMENT_REQUIRED",
+                "message": "You must subscribe to view your personalized plan."
+            }, status=status.HTTP_402_PAYMENT_REQUIRED) # 402 is specific for Payment
+
         try:
             plan = await WorkoutPlan.objects.select_related('user').aget(user=request.user, is_active=True)
             serializer_data = await sync_to_async(lambda: WorkoutPlanSerializer(plan).data)()
             return Response(serializer_data, status=status.HTTP_200_OK)
         except WorkoutPlan.DoesNotExist:
-            return Response({"message": "No active plan found. Please set goals first."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"message": "No active plan found. Set goals first."}, status=status.HTTP_404_NOT_FOUND)
 
 class CompleteSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def post(self, request):
+        # 1. BARRIER
+        is_premium = await verify_subscription_status(request.user)
+        if not is_premium:
+            return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         await WorkoutSession.objects.acreate(user=request.user)
         
         plan = await WorkoutPlan.objects.filter(user=request.user, is_active=True).afirst()
@@ -33,16 +49,44 @@ class CompleteSessionView(APIView):
             plan.sessions_completed_count += 1
             await plan.asave()
             
-        return Response({"message": "Session completed! Streak updated."}, status=status.HTTP_200_OK)
+        return Response({"message": "Session completed!"}, status=status.HTTP_200_OK)
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def get(self, request):
+        # 1. BARRIER
+        is_premium = await verify_subscription_status(request.user)
+        if not is_premium:
+            return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         user = request.user
 
-        total_sessions = await WorkoutSession.objects.filter(user=user).acount()
-        
+        sessions_dates = await sync_to_async(list)(
+            WorkoutSession.objects.filter(user=user)
+            .values_list('date_completed__date', flat=True)
+            .distinct()
+            .order_by('-date_completed__date')
+        )
+
+        streak = 0
+        if sessions_dates:
+            today = timezone.now().date()
+            latest_session = sessions_dates[0]
+
+            if latest_session == today or latest_session == today - datetime.timedelta(days=1):
+                streak = 1
+                for i in range(len(sessions_dates) - 1):
+                    current_date = sessions_dates[i]
+                    previous_date = sessions_dates[i+1]
+                    
+                    if current_date - previous_date == datetime.timedelta(days=1):
+                        streak += 1
+                    else:
+                        break
+            else:
+                streak = 0
+
         scans_qs = FaceScan.objects.filter(user=user).order_by('created_at')
         scans_list = []
         async for scan in scans_qs:
@@ -69,22 +113,26 @@ class DashboardView(APIView):
             if is_jaw_hit:
                 progress_summary['goals_hit'].append("Sharper Jawline")
 
-        user_score = (total_sessions * 10) + (int(latest_scan.symmetry_score) if latest_scan else 0)
+        badges = []
+        if streak > 0:
+            badges.append(f"Day {streak} Complete")
+        
+        user_score = (streak * 10) + (int(latest_scan.symmetry_score) if latest_scan else 0)
         
         leaderboard_data = {
             "your_rank": "#3",
             "your_score": user_score,
             "competitors": [
-                {"rank": "#1", "name": "Last Week", "score": 145, "trend": "+145"},
-                {"rank": "#2", "name": "Best Week", "score": 145, "trend": "+0"},
-                {"rank": "#3", "name": "You", "score": user_score, "trend": "+92"},
+                {"rank": "#1", "name": "Last Week", "score": user_score + 50, "trend": "+145"},
+                {"rank": "#2", "name": "Best Week", "score": user_score + 20, "trend": "+0"},
+                {"rank": "#3", "name": "You", "score": user_score, "trend": f"+{streak}"},
             ]
         }
 
         return Response({
-            "streak_days": total_sessions,
+            "streak_days": streak,
             "graph_data": scan_data,
             "progress_summary": progress_summary, 
             "leaderboard": leaderboard_data,      
-            "badges": ["Day 1 Complete"] if total_sessions >= 1 else []
+            "badges": badges 
         }, status=status.HTTP_200_OK)

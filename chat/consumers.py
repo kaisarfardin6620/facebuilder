@@ -5,6 +5,7 @@ from django.conf import settings
 from channels.db import database_sync_to_async
 from .models import ChatMessage
 from scans.models import FaceScan, UserGoal
+from payments.services import verify_subscription_status
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -12,23 +13,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         if self.user.is_anonymous:
             await self.close()
-        else:
+            return
+
+        # 1. BARRIER: Payment Check
+        is_premium = await verify_subscription_status(self.user)
+        
+        if not is_premium:
             await self.accept()
-            
-            history = await self.get_chat_history()
-            
-            if history:
-                await self.send(text_data=json.dumps({
-                    'type': 'history',
-                    'messages': history
-                }))
-            else:
-                greeting_text = f"Hi {self.user.name}! I'm FaceCoach. Ask me anything about your routine or scans."
-                await self.save_message(self.user, 'AI', greeting_text)
-                await self.send(text_data=json.dumps({
-                    'sender': 'AI',
-                    'message': greeting_text
-                }))
+            await self.send(text_data=json.dumps({
+                'sender': 'System',
+                'error': 'PAYMENT_REQUIRED',
+                'message': 'Chat is a Premium feature. Please subscribe.'
+            }))
+            await self.close()
+            return
+
+        await self.accept()
+        
+        history = await self.get_chat_history()
+        
+        if history:
+            await self.send(text_data=json.dumps({
+                'type': 'history',
+                'messages': history
+            }))
+        else:
+            greeting_text = f"Hi {self.user.name}! I'm FaceCoach. Ask me anything about your routine or scans."
+            await self.save_message(self.user, 'AI', greeting_text)
+            await self.send(text_data=json.dumps({
+                'sender': 'AI',
+                'message': greeting_text
+            }))
 
     async def disconnect(self, close_code):
         pass

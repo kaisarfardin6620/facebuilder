@@ -51,7 +51,8 @@ class LoginView(APIView):
         return Response({
             "message": "Successfully Logged in.",
             "token": tokens['access'],
-            "refresh_token": tokens['refresh']
+            "refresh_token": tokens['refresh'],
+            "user_id": user.id
         }, status=status.HTTP_200_OK)
 
 class VerifyOTPView(APIView):
@@ -76,7 +77,8 @@ class VerifyOTPView(APIView):
                     return Response({
                         "message": "Verification Successful",
                         "token": tokens['access'],
-                        "refresh_token": tokens['refresh']
+                        "refresh_token": tokens['refresh'],
+                        "user_id": user.id
                     }, status=status.HTTP_200_OK)
                 except User.DoesNotExist:
                     return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
