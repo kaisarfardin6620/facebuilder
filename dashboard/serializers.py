@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import SubscriptionPlan, Subscription
+from .models import Subscription
 from scans.models import FaceScan, UserGoal
 from scans.serializers import FaceScanSerializer, UserGoalSerializer
 from workouts.models import WorkoutSession
@@ -43,11 +43,6 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
     def get_current_plan(self, obj):
         sub = Subscription.objects.filter(user=obj, is_active=True).first()
         return sub.plan_name if sub else "Free"
-
-class SubscriptionPlanSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SubscriptionPlan
-        fields = '__all__'
 
 class AdminProfileSerializer(serializers.ModelSerializer):
     class Meta:

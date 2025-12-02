@@ -6,7 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
-from .models import SubscriptionPlan, Subscription, PaymentHistory
+from .models import Subscription, PaymentHistory
 from .serializers import *
 from scans.models import FaceScan
 from asgiref.sync import sync_to_async
@@ -165,12 +165,6 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return AdminUserDetailSerializer
         return AdminUserListSerializer
-
-class SubscriptionPlanViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminUser]
-    queryset = SubscriptionPlan.objects.all().order_by('-created_at')
-    serializer_class = SubscriptionPlanSerializer
-    pagination_class = DashboardPagination
 
 class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]

@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
-from dashboard.models import Subscription, PaymentHistory, SubscriptionPlan
+from dashboard.models import Subscription, PaymentHistory
 from datetime import datetime
 from .services import verify_subscription_status
 
@@ -62,13 +62,7 @@ class RevenueCatWebhookView(APIView):
                     }
                 )
 
-                amount = 0.0
-                if price_in_usd:
-                    amount = float(price_in_usd)
-                else:
-                    plan = await SubscriptionPlan.objects.filter(market_product_id=product_id).afirst()
-                    if plan:
-                        amount = float(plan.price)
+                amount = float(price_in_usd) if price_in_usd else 0.0
 
                 if amount > 0:
                     exists = await PaymentHistory.objects.filter(transaction_id=event_id).aexists()

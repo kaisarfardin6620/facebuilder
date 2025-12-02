@@ -4,7 +4,6 @@ from .views import *
 
 router = DefaultRouter()
 router.register(r'users', UserManagementViewSet, basename='admin-users')
-router.register(r'subscriptions', SubscriptionPlanViewSet, basename='admin-subscriptions')
 
 urlpatterns = [
     path('login/', AdminLoginView.as_view(), name='admin-login'),

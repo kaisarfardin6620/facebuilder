@@ -7,3 +7,4 @@ debug.log
 postman.json
 media
 staticfiles
+celerybeat-schedule

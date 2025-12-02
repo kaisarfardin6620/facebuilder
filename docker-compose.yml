@@ -1,0 +1,41 @@
+services:
+  web:
+    build: .
+    command: daphne -b 0.0.0.0 -p 8050 facebuilder.asgi:application
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    ports:
+      - "8050:8050"
+    env_file:
+      - .env
+
+  celery:
+    build: .
+    command: celery -A facebuilder worker --loglevel=info
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  celery_beat:
+    build: .
+    command: celery -A facebuilder beat --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    container_name: facebuilder-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  media_data:

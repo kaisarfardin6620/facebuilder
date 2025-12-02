@@ -1,12 +1,5 @@
 from django.contrib import admin
-from .models import SubscriptionPlan, Subscription, PaymentHistory
-
-@admin.register(SubscriptionPlan)
-class SubscriptionPlanAdmin(admin.ModelAdmin):
-    list_display = ('name', 'price', 'duration', 'market_product_id', 'is_active', 'created_at')
-    list_filter = ('is_active', 'duration')
-    search_fields = ('name', 'market_product_id')
-    ordering = ('-created_at',)
+from .models import Subscription, PaymentHistory
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
