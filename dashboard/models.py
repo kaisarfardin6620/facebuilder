@@ -1,4 +1,7 @@
 from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class SubscriptionPlan(models.Model):
     DURATION_CHOICES = (
@@ -18,3 +21,13 @@ class SubscriptionPlan(models.Model):
 
     def __str__(self):
         return self.name
+
+class Subscription(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='subscriptions')
+    plan_name = models.CharField(max_length=100) 
+    is_active = models.BooleanField(default=True)
+    expiry_date = models.DateTimeField(null=True, blank=True)
+    last_checked = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.plan_name}"

@@ -18,13 +18,12 @@ class MyPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def get(self, request):
-        # 1. BARRIER: Check Payment
         is_premium = await verify_subscription_status(request.user)
         if not is_premium:
             return Response({
                 "error": "PAYMENT_REQUIRED",
                 "message": "You must subscribe to view your personalized plan."
-            }, status=status.HTTP_402_PAYMENT_REQUIRED) # 402 is specific for Payment
+            }, status=status.HTTP_402_PAYMENT_REQUIRED) 
 
         try:
             plan = await WorkoutPlan.objects.select_related('user').aget(user=request.user, is_active=True)
@@ -37,7 +36,6 @@ class CompleteSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def post(self, request):
-        # 1. BARRIER
         is_premium = await verify_subscription_status(request.user)
         if not is_premium:
             return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
@@ -55,7 +53,6 @@ class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def get(self, request):
-        # 1. BARRIER
         is_premium = await verify_subscription_status(request.user)
         if not is_premium:
             return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)

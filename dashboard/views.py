@@ -6,12 +6,13 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-from .models import SubscriptionPlan
+from .models import SubscriptionPlan, Subscription
 from .serializers import *
 from scans.models import FaceScan
 from asgiref.sync import sync_to_async
 from rest_framework_simplejwt.tokens import RefreshToken
-from authentication.serializers import LoginSerializer
+from authentication.serializers import LoginSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+from authentication.utils import send_otp_via_twilio, verify_otp_via_twilio
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter
 
@@ -25,6 +26,9 @@ def get_tokens_for_admin(user):
         'refresh': str(refresh),
         'access': str(refresh.access_token),
     }
+
+send_otp_async = sync_to_async(send_otp_via_twilio, thread_sensitive=False)
+verify_otp_async = sync_to_async(verify_otp_via_twilio, thread_sensitive=False)
 
 class DashboardPagination(PageNumberPagination):
     page_size = 10
@@ -64,6 +68,55 @@ class AdminLoginView(APIView):
             "admin_name": user.name
         }, status=status.HTTP_200_OK)
 
+class AdminForgotPasswordView(APIView):
+    permission_classes = []
+
+    async def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        if await sync_to_async(serializer.is_valid)():
+            phone = serializer.data['phone_number']
+            try:
+                user = await User.objects.aget(phone_number=phone)
+                
+                if not user.is_staff:
+                    return Response({"error": "Access Denied. Not an admin account."}, status=status.HTTP_403_FORBIDDEN)
+                
+                if await send_otp_async(phone):
+                    return Response({"message": "OTP sent to admin number."}, status=status.HTTP_200_OK)
+                else:
+                    return Response({"error": "Failed to send SMS."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            except User.DoesNotExist:
+                return Response({"error": "Admin user not found"}, status=status.HTTP_404_NOT_FOUND)
+                
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class AdminResetPasswordConfirmView(APIView):
+    permission_classes = []
+
+    async def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        if await sync_to_async(serializer.is_valid)():
+            phone = serializer.data['phone_number']
+            otp = serializer.data['otp']
+            new_pass = serializer.data['new_password']
+
+            if await verify_otp_async(phone, otp):
+                try:
+                    user = await User.objects.aget(phone_number=phone)
+                    
+                    if not user.is_staff:
+                        return Response({"error": "Access Denied."}, status=status.HTTP_403_FORBIDDEN)
+
+                    user.set_password(new_pass)
+                    await user.asave()
+                    return Response({"message": "Admin password changed successfully."}, status=status.HTTP_200_OK)
+                except User.DoesNotExist:
+                    return Response({"error": "User error"}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class DashboardStatsView(APIView):
     permission_classes = [IsAdminUser]
 
@@ -71,7 +124,14 @@ class DashboardStatsView(APIView):
         total_users = await User.objects.filter(is_staff=False).acount()
         total_scans = await FaceScan.objects.acount()
         
-        total_earnings = 52567.53 
+        active_subs = await sync_to_async(list)(Subscription.objects.filter(is_active=True))
+        
+        total_earnings = 0.0
+        
+        for sub in active_subs:
+            plan = await SubscriptionPlan.objects.filter(market_product_id=sub.plan_name).afirst()
+            if plan:
+                total_earnings += float(plan.price)
 
         def get_graph_data():
             return list(FaceScan.objects.annotate(date=TruncDate('created_at')) \
@@ -84,7 +144,7 @@ class DashboardStatsView(APIView):
         return Response({
             "cards": {
                 "total_users": total_users,
-                "total_earnings": total_earnings,
+                "total_earnings": round(total_earnings, 2),
                 "total_scans": total_scans
             },
             "graph_data": scan_graph

@@ -27,7 +27,7 @@ class LoginView(APIView):
 
     async def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
+        if not await sync_to_async(serializer.is_valid)():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         phone = serializer.data['phone_number']
@@ -60,7 +60,7 @@ class VerifyOTPView(APIView):
 
     async def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
-        if serializer.is_valid():
+        if await sync_to_async(serializer.is_valid)():
             phone = serializer.data['phone_number']
             otp_input = serializer.data['otp']
             
@@ -92,7 +92,9 @@ class RegisterView(APIView):
 
     async def post(self, request):
         serializer = SignupSerializer(data=request.data)
-        if serializer.is_valid():
+        is_valid = await sync_to_async(serializer.is_valid)()
+        
+        if is_valid:
             await sync_to_async(serializer.save)()
             
             phone = serializer.data['phone_number']
@@ -112,7 +114,7 @@ class ForgotPasswordView(APIView):
 
     async def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
-        if serializer.is_valid():
+        if await sync_to_async(serializer.is_valid)():
             phone = serializer.data['phone_number']
             exists = await User.objects.filter(phone_number=phone).aexists()
             if exists:
@@ -127,7 +129,7 @@ class ResetPasswordConfirmView(APIView):
 
     async def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
-        if serializer.is_valid():
+        if await sync_to_async(serializer.is_valid)():
             phone = serializer.data['phone_number']
             otp = serializer.data['otp']
             new_pass = serializer.data['new_password']

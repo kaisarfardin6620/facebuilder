@@ -6,3 +6,4 @@ migrations
 debug.log
 postman.json
 media
+staticfiles

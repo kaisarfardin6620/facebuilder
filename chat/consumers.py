@@ -15,7 +15,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        # 1. BARRIER: Payment Check
         is_premium = await verify_subscription_status(self.user)
         
         if not is_premium:
