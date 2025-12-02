@@ -8,9 +8,8 @@ from workouts.models import WorkoutSession
 User = get_user_model()
 
 class AdminUserListSerializer(serializers.ModelSerializer):
-    """ Lightweight serializer for the Table View """
     scans_count = serializers.SerializerMethodField()
-    current_plan = serializers.SerializerMethodField() # <--- NEW FIELD
+    current_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -20,20 +19,16 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         return FaceScan.objects.filter(user=obj).count()
 
     def get_current_plan(self, obj):
-        # Fetch the active subscription for this user
         sub = Subscription.objects.filter(user=obj, is_active=True).first()
         if sub:
-            # Return "Monthly", "Yearly" etc based on product ID
             return sub.plan_name 
         return "Free"
 
-# ... (Keep AdminUserDetailSerializer, SubscriptionPlanSerializer, etc. exactly as they were) ...
-# ... Just copy the rest of the file below ...
 class AdminUserDetailSerializer(serializers.ModelSerializer):
     scans = FaceScanSerializer(many=True, read_only=True)
     goals = UserGoalSerializer(read_only=True)
     total_sessions = serializers.SerializerMethodField()
-    current_plan = serializers.SerializerMethodField() # <--- Added here too
+    current_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = User

@@ -4,9 +4,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
-from django.db.models import Count
-from django.db.models.functions import TruncDate
-from .models import SubscriptionPlan, Subscription
+from django.db.models import Count, Sum
+from django.db.models.functions import TruncMonth
+from .models import SubscriptionPlan, Subscription, PaymentHistory
 from .serializers import *
 from scans.models import FaceScan
 from asgiref.sync import sync_to_async
@@ -47,11 +47,11 @@ class AdminLoginView(APIView):
         try:
             user = await User.objects.aget(phone_number=phone)
         except User.DoesNotExist:
-            return Response({"error": "User not found. Please enter a valid phone number."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
         is_correct = await sync_to_async(user.check_password)(password)
         if not is_correct:
-            return Response({"error": "Wrong password. Please enter the correct password."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Wrong password."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_staff:
             return Response(
@@ -124,30 +124,32 @@ class DashboardStatsView(APIView):
         total_users = await User.objects.filter(is_staff=False).acount()
         total_scans = await FaceScan.objects.acount()
         
-        active_subs = await sync_to_async(list)(Subscription.objects.filter(is_active=True))
-        
-        total_earnings = 0.0
-        
-        for sub in active_subs:
-            plan = await SubscriptionPlan.objects.filter(market_product_id=sub.plan_name).afirst()
-            if plan:
-                total_earnings += float(plan.price)
+        earnings_agg = await PaymentHistory.objects.aaggregate(total=Sum('amount'))
+        total_earnings = earnings_agg['total'] if earnings_agg['total'] else 0.00
 
-        def get_graph_data():
-            return list(FaceScan.objects.annotate(date=TruncDate('created_at')) \
-                .values('date') \
-                .annotate(count=Count('id')) \
-                .order_by('date'))
+        def get_earnings_graph():
+            return list(PaymentHistory.objects.annotate(month=TruncMonth('transaction_date')) \
+                .values('month') \
+                .annotate(amount=Sum('amount')) \
+                .order_by('month'))
 
-        scan_graph = await sync_to_async(get_graph_data)()
+        raw_graph = await sync_to_async(get_earnings_graph)()
+        
+        formatted_graph = []
+        for entry in raw_graph:
+            if entry['month']:
+                formatted_graph.append({
+                    "date": entry['month'].strftime("%Y-%m"),
+                    "amount": float(entry['amount'])
+                })
 
         return Response({
             "cards": {
                 "total_users": total_users,
-                "total_earnings": round(total_earnings, 2),
+                "total_earnings": float(total_earnings),
                 "total_scans": total_scans
             },
-            "graph_data": scan_graph
+            "graph_data": formatted_graph
         })
 
 class UserManagementViewSet(viewsets.ModelViewSet):

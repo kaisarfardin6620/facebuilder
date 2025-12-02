@@ -64,15 +64,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         context_str = await self.get_user_context()
 
+        recent_history = await self.get_recent_messages_for_ai()
+
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         
+        messages_payload = [
+            {"role": "system", "content": f"You are FaceCoach. User Data: {context_str}. Keep answers short."}
+        ]
+        
+        messages_payload.extend(recent_history)
+        
+        messages_payload.append({"role": "user", "content": user_message})
+
         try:
             response = await client.chat.completions.create(
                 model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": f"You are FaceCoach. User Data: {context_str}. Keep answers short."},
-                    {"role": "user", "content": user_message}
-                ]
+                messages=messages_payload
             )
             ai_reply = response.choices[0].message.content
 
@@ -103,6 +110,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }
             for msg in messages
         ]
+
+    @database_sync_to_async
+    def get_recent_messages_for_ai(self):
+        msgs = ChatMessage.objects.filter(user=self.user).order_by('-created_at')[:10]
+        
+        history = []
+        for msg in reversed(msgs):
+            role = "user" if msg.sender == "USER" else "assistant"
+            history.append({"role": role, "content": msg.message})
+        return history
 
     @database_sync_to_async
     def get_user_context(self):

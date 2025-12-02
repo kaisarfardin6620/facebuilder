@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import get_user_model
 from asgiref.sync import sync_to_async
-from dashboard.models import Subscription
+from dashboard.models import Subscription, PaymentHistory, SubscriptionPlan
 from datetime import datetime
 from .services import verify_subscription_status
 
@@ -28,28 +28,26 @@ class TestRevenueCatConnection(APIView):
         }, status=status.HTTP_200_OK)
 
 class RevenueCatWebhookView(APIView):
-    # Security: Allow RevenueCat to hit this without a JWT token
     authentication_classes = [] 
     permission_classes = [AllowAny]
 
     async def post(self, request):
         event = request.data.get('event', {})
         event_type = event.get('type')
+        event_id = event.get('id')
         
-        # RevenueCat sends the User's Phone Number as 'app_user_id'
         app_user_id = event.get('app_user_id') 
 
         if not app_user_id:
             return Response({"message": "No user ID"}, status=status.HTTP_200_OK)
 
         try:
-            # Find the user by phone number
             user = await User.objects.aget(phone_number=app_user_id)
             
-            # 1. Handle Purchase / Renewal
             if event_type in ['INITIAL_PURCHASE', 'RENEWAL', 'uncancellation', 'NON_RENEWING_PURCHASE']:
                 expiry_time_ms = event.get('expiration_at_ms')
                 product_id = event.get('product_id', 'Unknown')
+                price_in_usd = event.get('price_in_usd') 
                 
                 expiry_date = None
                 if expiry_time_ms:
@@ -64,7 +62,24 @@ class RevenueCatWebhookView(APIView):
                     }
                 )
 
-            # 2. Handle Cancellation / Expiration
+                amount = 0.0
+                if price_in_usd:
+                    amount = float(price_in_usd)
+                else:
+                    plan = await SubscriptionPlan.objects.filter(market_product_id=product_id).afirst()
+                    if plan:
+                        amount = float(plan.price)
+
+                if amount > 0:
+                    exists = await PaymentHistory.objects.filter(transaction_id=event_id).aexists()
+                    if not exists:
+                        await PaymentHistory.objects.acreate(
+                            user=user,
+                            plan_name=product_id,
+                            amount=amount,
+                            transaction_id=event_id
+                        )
+
             elif event_type in ['CANCELLATION', 'EXPIRATION', 'billing_issue']:
                 try:
                     sub = await Subscription.objects.aget(user=user)
@@ -76,5 +91,4 @@ class RevenueCatWebhookView(APIView):
             return Response({"message": "Webhook processed"}, status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
-            # RevenueCat might send test events with fake IDs, just ignore them
             return Response({"message": "User not found in Django"}, status=status.HTTP_200_OK)
