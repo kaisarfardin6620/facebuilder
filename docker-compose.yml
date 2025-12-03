@@ -35,7 +35,7 @@ services:
 
   celery_beat:
     build: .
-    command: celery -A facebuilder beat --loglevel=info
+    command: celery -A facebuilder beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:
       - .:/app
     env_file:
