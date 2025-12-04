@@ -2,6 +2,7 @@ services:
   web:
     build: .
     command: daphne -b 0.0.0.0 -p 8000 facebuilder.asgi:application
+    restart: always
     volumes:
       - .:/app
       - media_data:/app/media
@@ -13,6 +14,7 @@ services:
 
   nginx:
     image: nginx:latest
+    restart: always
     ports:
       - "8050:8050"
     volumes:
@@ -25,6 +27,7 @@ services:
   celery:
     build: .
     command: celery -A facebuilder worker --loglevel=info
+    restart: always
     volumes:
       - .:/app
       - media_data:/app/media
@@ -35,7 +38,8 @@ services:
 
   celery_beat:
     build: .
-    command: celery -A facebuilder beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    command: celery -A facebuilder beat --loglevel=info
+    restart: always
     volumes:
       - .:/app
     env_file:
@@ -46,6 +50,7 @@ services:
   redis:
     image: redis:latest
     container_name: facebuilder-redis
+    restart: always
     ports:
       - "6379:6379"
 

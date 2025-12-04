@@ -146,3 +146,4 @@ django-db-file-storage==0.5.6.1
 celery
 adrf
 mediapipe
+twisted[http2,tls]
