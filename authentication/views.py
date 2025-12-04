@@ -145,3 +145,23 @@ class ResetPasswordConfirmView(APIView):
             else:
                 return Response({"error": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ResendOTPView(APIView):
+    throttle_classes = [OTPThrottle]
+
+    async def post(self, request):
+        serializer = ResendOTPSerializer(data=request.data)
+        if await sync_to_async(serializer.is_valid)():
+            phone = serializer.data['phone_number']
+            
+            user_exists = await User.objects.filter(phone_number=phone).aexists()
+            
+            if not user_exists:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            if await send_otp_async(phone):
+                return Response({"message": "OTP has been resent successfully."}, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Failed to send SMS."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

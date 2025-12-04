@@ -63,3 +63,6 @@ class ResetPasswordSerializer(serializers.Serializer):
 
     def validate_new_password(self, value):
         return validate_complex_password(value)
+
+class ResendOTPSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(validators=[validate_phone_format])
