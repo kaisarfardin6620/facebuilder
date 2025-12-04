@@ -16,7 +16,7 @@ async def verify_subscription_status(user):
 
             if not local_sub.is_active and local_sub.last_checked:
                 time_since = timezone.now() - local_sub.last_checked
-                if time_since.total_seconds() < 3600:
+                if time_since.total_seconds() < 10:
                     return False
     except Exception:
         pass
