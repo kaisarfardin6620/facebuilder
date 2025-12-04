@@ -8,11 +8,15 @@ from openai import AsyncOpenAI
 from .models import ChatMessage
 from .serializers import ChatMessageSerializer
 from asgiref.sync import sync_to_async
+from payments.services import verify_subscription_status
 
 class ChatCoachView(APIView):
     permission_classes = [IsAuthenticated]
 
     async def get(self, request):
+        if not await verify_subscription_status(request.user):
+            return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         messages_qs = ChatMessage.objects.filter(user=request.user).order_by('created_at')
         
         msgs_list = []
@@ -23,6 +27,9 @@ class ChatCoachView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     async def post(self, request):
+        if not await verify_subscription_status(request.user):
+            return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
+
         user_message = request.data.get('message')
         if not user_message:
             return Response({"error": "Message required"}, status=status.HTTP_400_BAD_REQUEST)
