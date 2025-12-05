@@ -1,6 +1,7 @@
 from adrf.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import *
 from .models import User
@@ -15,6 +16,14 @@ def get_tokens_for_user_async(user):
         'refresh': str(refresh),
         'access': str(refresh.access_token),
     }
+
+@sync_to_async
+def blacklist_token_async(token):
+    try:
+        token.blacklist()
+        return True
+    except Exception:
+        return False
 
 send_otp_async = sync_to_async(send_otp_via_twilio, thread_sensitive=False)
 verify_otp_async = sync_to_async(verify_otp_via_twilio, thread_sensitive=False)
@@ -54,6 +63,21 @@ class LoginView(APIView):
             "refresh_token": tokens['refresh'],
             "user_id": user.id
         }, status=status.HTTP_200_OK)
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    async def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        if await sync_to_async(serializer.is_valid)():
+            try:
+                refresh_token = serializer.data['refresh']
+                token = RefreshToken(refresh_token)
+                await blacklist_token_async(token)
+                return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
+            except Exception:
+                return Response({"error": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class VerifyOTPView(APIView):
     throttle_classes = [OTPThrottle]

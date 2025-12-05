@@ -66,3 +66,6 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 class ResendOTPSerializer(serializers.Serializer):
     phone_number = serializers.CharField(validators=[validate_phone_format])
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
