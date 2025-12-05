@@ -6,6 +6,7 @@ from channels.db import database_sync_to_async
 from .models import ChatMessage
 from scans.models import FaceScan, UserGoal
 from payments.services import verify_subscription_status
+from asgiref.sync import sync_to_async
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -15,7 +16,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        is_premium = await verify_subscription_status(self.user)
+        is_premium = await sync_to_async(verify_subscription_status)(self.user)
         
         if not is_premium:
             await self.accept()
@@ -37,7 +38,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'messages': history
             }))
         else:
-            greeting_text = f"Hi {self.user.name}! I'm FaceCoach. Ask me anything about your routine or scans."
+            greeting_text = f"Hi {self.user.name}! I'm FaceCoach. Ask me anything."
             await self.save_message(self.user, 'AI', greeting_text)
             await self.send(text_data=json.dumps({
                 'sender': 'AI',
@@ -48,8 +49,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         pass
 
     async def receive(self, text_data=None, bytes_data=None):
-        if not text_data:
-            return
+        if not text_data: return
 
         try:
             data = json.loads(text_data)
@@ -57,43 +57,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except json.JSONDecodeError:
             user_message = text_data
 
-        if not user_message:
-            return
+        if not user_message: return
 
         await self.save_message(self.user, 'USER', user_message)
-
         context_str = await self.get_user_context()
-
         recent_history = await self.get_recent_messages_for_ai()
 
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         
-        messages_payload = [
-            {"role": "system", "content": f"You are FaceCoach. User Data: {context_str}. Keep answers short."}
-        ]
-        
+        messages_payload = [{"role": "system", "content": f"You are FaceCoach. User Data: {context_str}. Keep answers short."}]
         messages_payload.extend(recent_history)
-        
         messages_payload.append({"role": "user", "content": user_message})
 
         try:
             response = await client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=messages_payload
             )
             ai_reply = response.choices[0].message.content
-
             await self.save_message(self.user, 'AI', ai_reply)
-
-            await self.send(text_data=json.dumps({
-                'sender': 'AI',
-                'message': ai_reply
-            }))
+            await self.send(text_data=json.dumps({'sender': 'AI', 'message': ai_reply}))
 
         except Exception as e:
-            await self.send(text_data=json.dumps({
-                'error': str(e)
-            }))
+            await self.send(text_data=json.dumps({'error': str(e)}))
 
     @database_sync_to_async
     def save_message(self, user, sender, message):
@@ -102,32 +88,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_chat_history(self):
         messages = ChatMessage.objects.filter(user=self.user).order_by('created_at')
-        return [
-            {
-                'sender': msg.sender,
-                'message': msg.message,
-                'created_at': msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            for msg in messages
-        ]
+        return [{'sender': m.sender, 'message': m.message} for m in messages]
 
     @database_sync_to_async
     def get_recent_messages_for_ai(self):
         msgs = ChatMessage.objects.filter(user=self.user).order_by('-created_at')[:10]
-        
-        history = []
-        for msg in reversed(msgs):
-            role = "user" if msg.sender == "USER" else "assistant"
-            history.append({"role": role, "content": msg.message})
-        return history
+        return [{"role": "user" if m.sender == "USER" else "assistant", "content": m.message} for m in reversed(msgs)]
 
     @database_sync_to_async
     def get_user_context(self):
         scan = FaceScan.objects.filter(user=self.user).last()
-        goal = UserGoal.objects.filter(user=self.user).first()
-        context = ""
-        if scan:
-            context += f"Jaw: {scan.jawline_angle}, Sym: {scan.symmetry_score}%. "
-        if goal:
-            context += f"Targets: Jaw {goal.target_jawline}. "
-        return context
+        return f"Jaw: {scan.jawline_angle}" if scan else ""

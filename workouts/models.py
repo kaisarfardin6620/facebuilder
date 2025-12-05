@@ -15,6 +15,7 @@ class Exercise(models.Model):
     description = models.TextField()
     instructions = models.JSONField(default=list)
     default_reps = models.CharField(max_length=50, default="10 reps")
+    default_sets = models.IntegerField(default=3)
     diagram_image = models.ImageField(upload_to='exercises/', blank=True, null=True)
     target_metric = models.CharField(max_length=20, choices=TARGET_CHOICES)
     
@@ -36,6 +37,7 @@ class PlanExercise(models.Model):
     plan = models.ForeignKey(WorkoutPlan, on_delete=models.CASCADE, related_name='exercises')
     exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)
     reps = models.CharField(max_length=50)
+    sets = models.IntegerField(default=3)
     order = models.PositiveIntegerField()
 
     class Meta:

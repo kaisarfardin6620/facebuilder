@@ -7,7 +7,7 @@ from workouts.models import Exercise
 from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Populate the database with 100 AI-generated facial exercises'
+    help = 'Populate the DB with exactly 25 exercises per category (100 total) including sets'
 
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
@@ -17,86 +17,87 @@ class Command(BaseCommand):
 
         client = OpenAI(api_key=api_key)
         
-        target_total = 100
-        current_count = Exercise.objects.count()
-        
-        self.stdout.write(f"Current exercises: {current_count}. Goal: {target_total}")
+        categories = ['JAWLINE', 'SYMMETRY', 'PUFFINESS', 'GENERAL']
+        target_per_category = 25
 
-        while current_count < target_total:
-            needed = target_total - current_count
-            batch_size = 20
+        for category in categories:
+            current_count = Exercise.objects.filter(target_metric=category).count()
             
-            self.stdout.write(f"Fetching batch of {batch_size} exercises... (Current Total: {current_count})")
+            self.stdout.write(f"Checking {category}: Have {current_count}/{target_per_category}")
 
-            prompt = f"""
-            Generate a JSON list of {batch_size} UNIQUE facial fitness exercises.
-            Mix of categories: JAWLINE, SYMMETRY, PUFFINESS, GENERAL.
-            
-            Structure:
-            [
-                {{
-                    "name": "Creative Name",
-                    "description": "Short summary",
-                    "instructions": ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"],
-                    "default_reps": "10s" or "15 reps",
-                    "target_metric": "JAWLINE"
-                }}
-            ]
-            Return ONLY raw JSON. No markdown.
-            """
+            while current_count < target_per_category:
+                needed = target_per_category - current_count
+                batch_size = min(5, needed)
 
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are a fitness API that outputs raw JSON."},
-                        {"role": "user", "content": prompt}
-                    ]
-                )
+                self.stdout.write(f" -> Fetching {batch_size} new {category} exercises...")
 
-                content = response.choices[0].message.content
-                content = content.replace("```json", "").replace("```", "").strip()
-                content = re.sub(r'\s+', ' ', content)
+                prompt = f"""
+                Generate a JSON list of {batch_size} UNIQUE facial fitness exercises specifically for: {category}.
+                
+                Structure:
+                [
+                    {{
+                        "name": "Creative Name",
+                        "description": "Short summary",
+                        "instructions": ["Step 1", "Step 2", "Step 3"],
+                        "default_reps": "10s" or "15 reps",
+                        "default_sets": 3 (integer between 2 and 4),
+                        "target_metric": "{category}"
+                    }}
+                ]
+                Return ONLY raw JSON. No markdown.
+                """
 
                 try:
-                    data = json.loads(content)
-                except json.JSONDecodeError:
-                    self.stdout.write(self.style.WARNING("JSON Error in this batch, retrying..."))
-                    continue
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a fitness API that outputs raw JSON."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
 
-                final_list = []
-                if isinstance(data, list):
-                    final_list = data
-                elif isinstance(data, dict):
-                    for key, value in data.items():
-                        if isinstance(value, list):
-                            final_list = value
-                            break
-                
-                added_in_batch = 0
-                for item in final_list:
-                    if not isinstance(item, dict): continue
+                    content = response.choices[0].message.content
+                    content = content.replace("```json", "").replace("```", "").strip()
+                    content = re.sub(r'\s+', ' ', content)
+
+                    try:
+                        data = json.loads(content)
+                    except json.JSONDecodeError:
+                        self.stdout.write(self.style.WARNING("JSON Error, retrying..."))
+                        continue
+
+                    final_list = []
+                    if isinstance(data, list):
+                        final_list = data
+                    elif isinstance(data, dict):
+                        for k, v in data.items():
+                            if isinstance(v, list):
+                                final_list = v
+                                break
                     
-                    metric = item.get('target_metric', 'GENERAL').replace(" ", "")
-                    name = item.get('name', 'Unknown')
+                    added_count = 0
+                    for item in final_list:
+                        name = item.get('name', 'Unknown')
+                        if not Exercise.objects.filter(name=name).exists():
+                            Exercise.objects.create(
+                                name=name,
+                                description=item.get('description', ''),
+                                instructions=item.get('instructions', []),
+                                default_reps=item.get('default_reps', '10 reps'),
+                                default_sets=item.get('default_sets', 3),
+                                target_metric=category
+                            )
+                            added_count += 1
+                    
+                    self.stdout.write(self.style.SUCCESS(f"    + Added {added_count} exercises."))
+                    
+                    current_count = Exercise.objects.filter(target_metric=category).count()
+                    time.sleep(1)
 
-                    if not Exercise.objects.filter(name=name).exists():
-                        Exercise.objects.create(
-                            name=name,
-                            description=item.get('description', ''),
-                            instructions=item.get('instructions', []),
-                            default_reps=item.get('default_reps', '10 reps'),
-                            target_metric=metric
-                        )
-                        added_in_batch += 1
-                
-                current_count = Exercise.objects.count()
-                self.stdout.write(self.style.SUCCESS(f" + Added {added_in_batch} new exercises."))
-                
-                time.sleep(1)
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f"Error: {str(e)}"))
+                    break
 
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Error: {str(e)}"))
-                break
-
-        self.stdout.write(self.style.SUCCESS(f"DONE! Total exercises in DB: {current_count}"))
+        total = Exercise.objects.count()
+        self.stdout.write(self.style.SUCCESS(f"DONE! Total exercises in DB: {total}"))

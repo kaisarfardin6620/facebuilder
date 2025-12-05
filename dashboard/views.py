@@ -1,4 +1,4 @@
-from adrf.views import APIView
+from rest_framework.views import APIView
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
@@ -9,7 +9,6 @@ from django.db.models.functions import TruncMonth
 from .models import Subscription, PaymentHistory
 from .serializers import *
 from scans.models import FaceScan
-from asgiref.sync import sync_to_async
 from rest_framework_simplejwt.tokens import RefreshToken
 from authentication.serializers import LoginSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
 from authentication.utils import send_otp_via_twilio, verify_otp_via_twilio
@@ -18,7 +17,6 @@ from rest_framework.filters import SearchFilter
 
 User = get_user_model()
 
-@sync_to_async
 def get_tokens_for_admin(user):
     refresh = RefreshToken.for_user(user)
     refresh['is_admin'] = True
@@ -27,16 +25,13 @@ def get_tokens_for_admin(user):
         'access': str(refresh.access_token),
     }
 
-send_otp_async = sync_to_async(send_otp_via_twilio, thread_sensitive=False)
-verify_otp_async = sync_to_async(verify_otp_via_twilio, thread_sensitive=False)
-
 class DashboardPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
     max_page_size = 100
 
 class AdminLoginView(APIView):
-    async def post(self, request):
+    def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -45,12 +40,11 @@ class AdminLoginView(APIView):
         password = serializer.data['password']
 
         try:
-            user = await User.objects.aget(phone_number=phone)
+            user = User.objects.get(phone_number=phone)
         except User.DoesNotExist:
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        is_correct = await sync_to_async(user.check_password)(password)
-        if not is_correct:
+        if not user.check_password(password):
             return Response({"error": "Wrong password."}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_staff:
@@ -59,7 +53,7 @@ class AdminLoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        tokens = await get_tokens_for_admin(user)
+        tokens = get_tokens_for_admin(user)
 
         return Response({
             "message": "Admin Login Successful",
@@ -71,17 +65,17 @@ class AdminLoginView(APIView):
 class AdminForgotPasswordView(APIView):
     permission_classes = []
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
             try:
-                user = await User.objects.aget(phone_number=phone)
+                user = User.objects.get(phone_number=phone)
                 
                 if not user.is_staff:
                     return Response({"error": "Access Denied. Not an admin account."}, status=status.HTTP_403_FORBIDDEN)
                 
-                if await send_otp_async(phone):
+                if send_otp_via_twilio(phone):
                     return Response({"message": "OTP sent to admin number."}, status=status.HTTP_200_OK)
                 else:
                     return Response({"error": "Failed to send SMS."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -94,22 +88,22 @@ class AdminForgotPasswordView(APIView):
 class AdminResetPasswordConfirmView(APIView):
     permission_classes = []
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
             otp = serializer.data['otp']
             new_pass = serializer.data['new_password']
 
-            if await verify_otp_async(phone, otp):
+            if verify_otp_via_twilio(phone, otp):
                 try:
-                    user = await User.objects.aget(phone_number=phone)
+                    user = User.objects.get(phone_number=phone)
                     
                     if not user.is_staff:
                         return Response({"error": "Access Denied."}, status=status.HTTP_403_FORBIDDEN)
 
                     user.set_password(new_pass)
-                    await user.asave()
+                    user.save()
                     return Response({"message": "Admin password changed successfully."}, status=status.HTTP_200_OK)
                 except User.DoesNotExist:
                     return Response({"error": "User error"}, status=status.HTTP_404_NOT_FOUND)
@@ -120,20 +114,17 @@ class AdminResetPasswordConfirmView(APIView):
 class DashboardStatsView(APIView):
     permission_classes = [IsAdminUser]
 
-    async def get(self, request):
-        total_users = await User.objects.filter(is_staff=False).acount()
-        total_scans = await FaceScan.objects.acount()
+    def get(self, request):
+        total_users = User.objects.filter(is_staff=False).count()
+        total_scans = FaceScan.objects.count()
         
-        earnings_agg = await PaymentHistory.objects.aaggregate(total=Sum('amount'))
+        earnings_agg = PaymentHistory.objects.aggregate(total=Sum('amount'))
         total_earnings = earnings_agg['total'] if earnings_agg['total'] else 0.00
 
-        def get_earnings_graph():
-            return list(PaymentHistory.objects.annotate(month=TruncMonth('transaction_date')) \
-                .values('month') \
-                .annotate(amount=Sum('amount')) \
-                .order_by('month'))
-
-        raw_graph = await sync_to_async(get_earnings_graph)()
+        raw_graph = list(PaymentHistory.objects.annotate(month=TruncMonth('transaction_date')) \
+            .values('month') \
+            .annotate(amount=Sum('amount')) \
+            .order_by('month'))
         
         formatted_graph = []
         for entry in raw_graph:
@@ -170,15 +161,14 @@ class AdminProfileView(APIView):
     permission_classes = [IsAdminUser]
     parser_classes = [MultiPartParser, FormParser]
 
-    async def get(self, request):
+    def get(self, request):
         serializer = AdminProfileSerializer(request.user)
         return Response(serializer.data)
 
-    async def put(self, request):
+    def put(self, request):
         serializer = AdminProfileSerializer(request.user, data=request.data, partial=True)
-        is_valid = await sync_to_async(serializer.is_valid)()
-        if is_valid:
-            await sync_to_async(serializer.save)()
+        if serializer.is_valid():
+            serializer.save()
             return Response(serializer.data)
             
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -186,17 +176,17 @@ class AdminProfileView(APIView):
 class AdminChangePasswordView(APIView):
     permission_classes = [IsAdminUser]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
         if serializer.is_valid():
             user = request.user
-            is_correct = await sync_to_async(user.check_password)(serializer.data.get("old_password"))
+            is_correct = user.check_password(serializer.data.get("old_password"))
             
             if not is_correct:
                 return Response({"error": "Wrong old password"}, status=status.HTTP_400_BAD_REQUEST)
             
             user.set_password(serializer.data.get("new_password"))
-            await user.asave()
+            user.save()
             return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
             
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

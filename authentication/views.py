@@ -1,4 +1,4 @@
-from adrf.views import APIView
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -7,26 +7,13 @@ from .serializers import *
 from .models import User
 from .utils import send_otp_via_twilio, verify_otp_via_twilio
 from rest_framework.throttling import AnonRateThrottle
-from asgiref.sync import sync_to_async
 
-@sync_to_async
-def get_tokens_for_user_async(user):
+def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
     return {
         'refresh': str(refresh),
         'access': str(refresh.access_token),
     }
-
-@sync_to_async
-def blacklist_token_async(token):
-    try:
-        token.blacklist()
-        return True
-    except Exception:
-        return False
-
-send_otp_async = sync_to_async(send_otp_via_twilio, thread_sensitive=False)
-verify_otp_async = sync_to_async(verify_otp_via_twilio, thread_sensitive=False)
 
 class OTPThrottle(AnonRateThrottle):
     scope = 'otp'
@@ -34,28 +21,27 @@ class OTPThrottle(AnonRateThrottle):
 class LoginView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        if not await sync_to_async(serializer.is_valid)():
+        if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         phone = serializer.data['phone_number']
         password = serializer.data['password']
 
         try:
-            user = await User.objects.aget(phone_number=phone)
+            user = User.objects.get(phone_number=phone)
         except User.DoesNotExist:
             return Response({"error": "Number incorrect"}, status=status.HTTP_404_NOT_FOUND)
 
-        is_correct = await sync_to_async(user.check_password)(password)
-        if not is_correct:
+        if not user.check_password(password):
             return Response({"error": "Wrong password"}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not user.is_active:
-            await send_otp_async(phone)
+            send_otp_via_twilio(phone)
             return Response({"error": "Account not active. OTP sent to phone."}, status=status.HTTP_403_FORBIDDEN)
 
-        tokens = await get_tokens_for_user_async(user)
+        tokens = get_tokens_for_user(user)
 
         return Response({
             "message": "Successfully Logged in.",
@@ -67,13 +53,13 @@ class LoginView(APIView):
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = LogoutSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             try:
                 refresh_token = serializer.data['refresh']
                 token = RefreshToken(refresh_token)
-                await blacklist_token_async(token)
+                token.blacklist()
                 return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
             except Exception:
                 return Response({"error": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
@@ -82,21 +68,21 @@ class LogoutView(APIView):
 class VerifyOTPView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
             otp_input = serializer.data['otp']
             
-            is_valid = await verify_otp_async(phone, otp_input)
+            is_valid = verify_otp_via_twilio(phone, otp_input)
 
             if is_valid:
                 try:
-                    user = await User.objects.aget(phone_number=phone)
+                    user = User.objects.get(phone_number=phone)
                     user.is_active = True
-                    await user.asave()
+                    user.save()
 
-                    tokens = await get_tokens_for_user_async(user)
+                    tokens = get_tokens_for_user(user)
 
                     return Response({
                         "message": "Verification Successful",
@@ -114,16 +100,14 @@ class VerifyOTPView(APIView):
 class RegisterView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = SignupSerializer(data=request.data)
-        is_valid = await sync_to_async(serializer.is_valid)()
         
-        if is_valid:
-            await sync_to_async(serializer.save)()
-            
+        if serializer.is_valid():
+            serializer.save()
             phone = serializer.data['phone_number']
             
-            if await send_otp_async(phone):
+            if send_otp_via_twilio(phone):
                 return Response({
                     "message": "Account created. OTP sent.",
                     "phone_number": phone
@@ -136,13 +120,12 @@ class RegisterView(APIView):
 class ForgotPasswordView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
-            exists = await User.objects.filter(phone_number=phone).aexists()
-            if exists:
-                if await send_otp_async(phone):
+            if User.objects.filter(phone_number=phone).exists():
+                if send_otp_via_twilio(phone):
                     return Response({"message": "OTP sent for password reset."}, status=status.HTTP_200_OK)
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -151,18 +134,18 @@ class ForgotPasswordView(APIView):
 class ResetPasswordConfirmView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
             otp = serializer.data['otp']
             new_pass = serializer.data['new_password']
 
-            if await verify_otp_async(phone, otp):
+            if verify_otp_via_twilio(phone, otp):
                 try:
-                    user = await User.objects.aget(phone_number=phone)
+                    user = User.objects.get(phone_number=phone)
                     user.set_password(new_pass)
-                    await user.asave()
+                    user.save()
                     return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
                 except User.DoesNotExist:
                     return Response({"error": "User error"}, status=status.HTTP_404_NOT_FOUND)
@@ -173,17 +156,15 @@ class ResetPasswordConfirmView(APIView):
 class ResendOTPView(APIView):
     throttle_classes = [OTPThrottle]
 
-    async def post(self, request):
+    def post(self, request):
         serializer = ResendOTPSerializer(data=request.data)
-        if await sync_to_async(serializer.is_valid)():
+        if serializer.is_valid():
             phone = serializer.data['phone_number']
             
-            user_exists = await User.objects.filter(phone_number=phone).aexists()
-            
-            if not user_exists:
+            if not User.objects.filter(phone_number=phone).exists():
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            if await send_otp_async(phone):
+            if send_otp_via_twilio(phone):
                 return Response({"message": "OTP has been resent successfully."}, status=status.HTTP_200_OK)
             else:
                 return Response({"error": "Failed to send SMS."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

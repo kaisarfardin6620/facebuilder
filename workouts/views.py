@@ -1,4 +1,4 @@
-from adrf.views import APIView
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -6,19 +6,19 @@ from .models import WorkoutPlan, WorkoutSession
 from .serializers import WorkoutPlanSerializer
 from scans.models import FaceScan, UserGoal
 from scans.serializers import FaceScanSerializer
-from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 import datetime
 from payments.services import verify_subscription_status
+from .utils import calculate_reps_for_level
 
 User = get_user_model()
 
 class MyPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
-    async def get(self, request):
-        is_premium = await verify_subscription_status(request.user)
+    def get(self, request):
+        is_premium = verify_subscription_status(request.user)
         if not is_premium:
             return Response({
                 "error": "PAYMENT_REQUIRED",
@@ -26,8 +26,8 @@ class MyPlanView(APIView):
             }, status=status.HTTP_402_PAYMENT_REQUIRED) 
 
         try:
-            plan = await WorkoutPlan.objects.select_related('user').aget(user=request.user, is_active=True)
-            serializer_data = await sync_to_async(lambda: WorkoutPlanSerializer(plan).data)()
+            plan = WorkoutPlan.objects.select_related('user').get(user=request.user, is_active=True)
+            serializer_data = WorkoutPlanSerializer(plan).data
             return Response(serializer_data, status=status.HTTP_200_OK)
         except WorkoutPlan.DoesNotExist:
             return Response({"message": "No active plan found. Set goals first."}, status=status.HTTP_404_NOT_FOUND)
@@ -35,31 +35,40 @@ class MyPlanView(APIView):
 class CompleteSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
-    async def post(self, request):
-        is_premium = await verify_subscription_status(request.user)
+    def post(self, request):
+        is_premium = verify_subscription_status(request.user)
         if not is_premium:
             return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
 
-        await WorkoutSession.objects.acreate(user=request.user)
+        WorkoutSession.objects.create(user=request.user)
         
-        plan = await WorkoutPlan.objects.filter(user=request.user, is_active=True).afirst()
+        plan = WorkoutPlan.objects.filter(user=request.user, is_active=True).first()
         if plan:
             plan.sessions_completed_count += 1
-            await plan.asave()
+            
+            if plan.sessions_completed_count % 7 == 0:
+                plan.difficulty_level += 1
+                
+                for plan_ex in plan.exercises.all():
+                    new_reps = calculate_reps_for_level(plan_ex.exercise.default_reps, plan.difficulty_level)
+                    plan_ex.reps = new_reps
+                    plan_ex.save()
+            
+            plan.save()
             
         return Response({"message": "Session completed!"}, status=status.HTTP_200_OK)
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
-    async def get(self, request):
-        is_premium = await verify_subscription_status(request.user)
+    def get(self, request):
+        is_premium = verify_subscription_status(request.user)
         if not is_premium:
             return Response({"error": "PAYMENT_REQUIRED"}, status=status.HTTP_402_PAYMENT_REQUIRED)
 
         user = request.user
 
-        sessions_dates = await sync_to_async(list)(
+        sessions_dates = list(
             WorkoutSession.objects.filter(user=user)
             .values_list('date_completed__date', flat=True)
             .distinct()
@@ -84,16 +93,12 @@ class DashboardView(APIView):
             else:
                 streak = 0
 
-        scans_qs = FaceScan.objects.filter(user=user).order_by('created_at')
-        scans_list = []
-        async for scan in scans_qs:
-            scans_list.append(scan)
-        
-        scan_data = await sync_to_async(lambda: FaceScanSerializer(scans_list, many=True).data)()
+        scans_list = list(FaceScan.objects.filter(user=user).order_by('created_at'))
+        scan_data = FaceScanSerializer(scans_list, many=True).data
         
         latest_scan = scans_list[-1] if scans_list else None
         first_scan = scans_list[0] if scans_list else None
-        goal = await UserGoal.objects.filter(user=user).afirst()
+        goal = UserGoal.objects.filter(user=user).first()
         
         progress_summary = {
             "overall_progress": 0,
@@ -114,17 +119,19 @@ class DashboardView(APIView):
         else:
             consistency_text = "Unstoppable! Your consistency is in the top 1%."
 
-        if latest_scan and goal:
-            progress_summary['jawline_status'] = f"{int(latest_scan.jawline_angle)}° (Goal {int(goal.target_jawline)}°)"
+        if latest_scan and goal and latest_scan.status == 'COMPLETED':
+            current_val = latest_scan.jawline_angle if latest_scan.jawline_angle is not None else 0
+            target_val = goal.target_jawline if goal.target_jawline is not None else 0
             
-            start_val = first_scan.jawline_angle if first_scan else latest_scan.jawline_angle
-            target_val = goal.target_jawline
-            current_val = latest_scan.jawline_angle
+            progress_summary['jawline_status'] = f"{int(current_val)}° (Goal {int(target_val)}°)"
+            
+            start_val = first_scan.jawline_angle if (first_scan and first_scan.jawline_angle) else current_val
             
             total_journey = start_val - target_val
             made_journey = start_val - current_val
             
-            if total_journey > 0.1: 
+            percent_complete = 0
+            if abs(total_journey) > 0.1: 
                 percent_complete = (made_journey / total_journey) * 100
                 percent_complete = max(0, min(100, percent_complete))
             else:
@@ -162,7 +169,11 @@ class DashboardView(APIView):
         if streak > 0:
             badges.append(f"Day {streak} Complete")
         
-        user_score = (streak * 10) + (int(latest_scan.symmetry_score) if latest_scan else 0)
+        sym_score = 0
+        if latest_scan and latest_scan.symmetry_score:
+            sym_score = int(latest_scan.symmetry_score)
+
+        user_score = (streak * 10) + sym_score
         
         leaderboard_data = {
             "your_rank": "#3",
