@@ -7,7 +7,7 @@ from workouts.models import Exercise
 from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Populate the DB with exactly 25 exercises per category (100 total) including sets'
+    help = 'Populate the DB with 25 exercises per category, 5 steps each'
 
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
@@ -39,13 +39,14 @@ class Command(BaseCommand):
                     {{
                         "name": "Creative Name",
                         "description": "Short summary",
-                        "instructions": ["Step 1", "Step 2", "Step 3"],
-                        "default_reps": "10s" or "15 reps",
-                        "default_sets": 3 (integer between 2 and 4),
+                        "instructions": ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"],
+                        "default_sets": 3 (integer),
+                        "type": "REPS" or "DURATION",
+                        "value": 10 (integer, if type is REPS this means 10 reps, if DURATION this means 10 seconds),
                         "target_metric": "{category}"
                     }}
                 ]
-                Return ONLY raw JSON. No markdown.
+                Return ONLY raw JSON. No markdown. Make sure there are exactly 5 instruction steps.
                 """
 
                 try:
@@ -80,11 +81,24 @@ class Command(BaseCommand):
                     for item in final_list:
                         name = item.get('name', 'Unknown')
                         if not Exercise.objects.filter(name=name).exists():
+                            
+                            is_duration = item.get('type') == 'DURATION'
+                            val = int(item.get('value', 10))
+                            
+                            def_reps = 0
+                            def_dur = 0
+                            
+                            if is_duration:
+                                def_dur = val
+                            else:
+                                def_reps = val
+
                             Exercise.objects.create(
                                 name=name,
                                 description=item.get('description', ''),
                                 instructions=item.get('instructions', []),
-                                default_reps=item.get('default_reps', '10 reps'),
+                                default_reps=def_reps,
+                                default_duration=def_dur,
                                 default_sets=item.get('default_sets', 3),
                                 target_metric=category
                             )

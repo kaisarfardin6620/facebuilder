@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 import datetime
 from payments.services import verify_subscription_status
-from .utils import calculate_reps_for_level
+from .utils import update_plan_difficulty
 
 User = get_user_model()
 
@@ -48,11 +48,7 @@ class CompleteSessionView(APIView):
             
             if plan.sessions_completed_count % 7 == 0:
                 plan.difficulty_level += 1
-                
-                for plan_ex in plan.exercises.all():
-                    new_reps = calculate_reps_for_level(plan_ex.exercise.default_reps, plan.difficulty_level)
-                    plan_ex.reps = new_reps
-                    plan_ex.save()
+                update_plan_difficulty(plan)
             
             plan.save()
             

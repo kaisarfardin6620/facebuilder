@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from .serializers import *
 from .models import User
 from .utils import send_otp_via_twilio, verify_otp_via_twilio
@@ -61,8 +62,11 @@ class LogoutView(APIView):
                 token = RefreshToken(refresh_token)
                 token.blacklist()
                 return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
-            except Exception:
-                return Response({"error": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
+            except TokenError as e:
+                # This will tell you EXACTLY why it failed (Expired? Wrong type?)
+                return Response({"error": f"Token Error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class VerifyOTPView(APIView):

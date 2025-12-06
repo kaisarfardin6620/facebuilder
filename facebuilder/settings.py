@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
+    'rest_framework_simplejwt.token_blacklist', 
     'db_file_storage',
     'authentication',
     'scans',
