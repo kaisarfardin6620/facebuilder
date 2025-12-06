@@ -7,6 +7,8 @@ from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+SERVER_BASE_URL = os.getenv('SERVER_BASE_URL', 'http://127.0.0.1:8050')
+
 load_dotenv(os.path.join(BASE_DIR, '.env')) 
 
 SECRET_KEY = os.getenv('SECRET_KEY')
@@ -49,7 +51,7 @@ INSTALLED_APPS = [
 
 REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_BASE_URL = "https://api.revenuecat.com/v1"
-REVENUECAT_ENTITLEMENT_ID = os.getenv('REVENUECAT_ENTITLEMENT_ID', 'premium')
+REVENUECAT_ENTITLEMENT_IDS = os.getenv('REVENUECAT_ENTITLEMENT_IDS', 'monthly,sixmonthly,yearly').split(',')
 
 DEFAULT_FILE_STORAGE = 'db_file_storage.storage.DatabaseFileStorage'
 
@@ -113,13 +115,21 @@ TEMPLATES = [
 
 ASGI_APPLICATION = 'facebuilder.asgi.application'
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL'),
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
+if os.getenv('DATABASE_URL'):
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=os.getenv('DATABASE_URL'),
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {

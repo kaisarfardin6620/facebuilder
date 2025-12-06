@@ -16,16 +16,14 @@ def verify_subscription_status(user):
                     sub.is_active = False
                     sub.save()
                     return False
-            
             return True
-
     except Exception:
         return False
 
     return False
 
 def manual_sync_revenuecat(user):
-    app_user_id = user.phone_number
+    app_user_id = user.phone_number 
     url = f"https://api.revenuecat.com/v1/subscribers/{app_user_id}"
     
     headers = {
@@ -41,22 +39,31 @@ def manual_sync_revenuecat(user):
 
         data = response.json()
         entitlements = data.get('subscriber', {}).get('entitlements', {})
-        target_entitlement = entitlements.get(settings.REVENUECAT_ENTITLEMENT_ID, {})
         
         is_active = False
         expiry = None
-        product_id = "Unknown"
+        product_id = "Free"
         
-        if target_entitlement:
-            product_id = target_entitlement.get('product_identifier', 'Premium')
-            expires_date_str = target_entitlement.get('expires_date')
-            
-            if expires_date_str:
-                expiry = parse_datetime(expires_date_str)
-                if expiry and expiry > timezone.now():
+        for ent_id in settings.REVENUECAT_ENTITLEMENT_IDS:
+            if ent_id in entitlements:
+                ent_data = entitlements[ent_id]
+                expires_date_str = ent_data.get('expires_date')
+                
+                this_is_active = False
+                if expires_date_str:
+                    exp_date = parse_datetime(expires_date_str)
+                    if exp_date and exp_date > timezone.now():
+                        this_is_active = True
+                else:
+                    this_is_active = True
+                
+                if this_is_active:
                     is_active = True
-            else:
-                is_active = True
+                    expiry = parse_datetime(expires_date_str) if expires_date_str else None
+                    product_id = ent_data.get('product_identifier', ent_id)
+                    break 
+                
+                product_id = ent_data.get('product_identifier', ent_id)
 
         Subscription.objects.update_or_create(
             user=user,
