@@ -14,7 +14,7 @@ from django.views.decorators.vary import vary_on_headers
 class ScanFaceView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @method_decorator(cache_page(60 * 15))
+    @method_decorator(cache_page(60 * 1))
     @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()

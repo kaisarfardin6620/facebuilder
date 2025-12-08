@@ -37,9 +37,26 @@ def analyze_face_image(image_file):
         results = face_mesh.process(rgb_image)
         
         if not results.multi_face_landmarks:
-            raise ValueError("No face detected")
+            raise ValueError("No face detected. Please ensure your face is clearly visible.")
             
         landmarks = results.multi_face_landmarks[0].landmark
+
+        x_values = [lm.x for lm in landmarks]
+        y_values = [lm.y for lm in landmarks]
+
+        min_x, max_x = min(x_values), max(x_values)
+        min_y, max_y = min(y_values), max(y_values)
+
+        face_width_ratio = max_x - min_x
+
+        if min_x < 0.01 or max_x > 0.99 or min_y < 0.01 or max_y > 0.99:
+             raise ValueError("You are too close to the camera (face cut off). Please move back.")
+
+        if face_width_ratio < 0.25:
+            raise ValueError("You are too far from the camera. Please move closer.")
+        
+        if face_width_ratio > 0.85:
+            raise ValueError("You are too close to the camera. Please move back slightly.")
 
         def get_coords(index):
             return (landmarks[index].x * width, landmarks[index].y * height)

@@ -20,7 +20,7 @@ User = get_user_model()
 class MyPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @method_decorator(cache_page(60 * 15))
+    @method_decorator(cache_page(60 * 1))
     @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         is_premium = verify_subscription_status(request.user)
@@ -62,7 +62,7 @@ class CompleteSessionView(APIView):
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @method_decorator(cache_page(60 * 15))
+    @method_decorator(cache_page(60 * 1))
     @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         is_premium = verify_subscription_status(request.user)

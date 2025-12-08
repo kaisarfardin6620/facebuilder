@@ -18,7 +18,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app/
 
-RUN useradd -m appuser && chown -R appuser /app
-USER appuser
+RUN useradd -m appuser
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+RUN mkdir -p /app/media /app/staticfiles && \
+    chown -R appuser:appuser /app/media /app/staticfiles
+
+
+ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "facebuilder.asgi:application"]
