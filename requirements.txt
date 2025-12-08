@@ -147,3 +147,4 @@ celery
 adrf
 mediapipe
 twisted[http2,tls]
+django-redis

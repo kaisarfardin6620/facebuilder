@@ -52,3 +52,7 @@ class AdminProfileSerializer(serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()    

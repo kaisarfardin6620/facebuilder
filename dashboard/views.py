@@ -1,3 +1,4 @@
+from tokenize import TokenError
 from rest_framework.views import APIView
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -14,6 +15,7 @@ from authentication.serializers import LoginSerializer, ForgotPasswordSerializer
 from authentication.utils import send_otp_via_twilio, verify_otp_via_twilio
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter
+from rest_framework.permissions import IsAuthenticated
 
 User = get_user_model()
 
@@ -190,3 +192,21 @@ class AdminChangePasswordView(APIView):
             return Response({"message": "Password updated successfully"}, status=status.HTTP_200_OK)
             
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                refresh_token = serializer.data['refresh']
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+                return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
+            except TokenError as e:
+                # This will tell you EXACTLY why it failed (Expired? Wrong type?)
+                return Response({"error": f"Token Error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)    

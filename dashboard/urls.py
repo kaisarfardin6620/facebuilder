@@ -10,5 +10,6 @@ urlpatterns = [
     path('stats/', DashboardStatsView.as_view(), name='admin-stats'),
     path('profile/', AdminProfileView.as_view(), name='admin-profile'),
     path('change-password/', AdminChangePasswordView.as_view(), name='admin-password'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     path('', include(router.urls)),
 ]
