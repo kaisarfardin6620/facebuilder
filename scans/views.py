@@ -7,10 +7,15 @@ from .serializers import FaceScanSerializer, SetGoalsSerializer
 from workouts.utils import generate_workout_plan
 from payments.services import verify_subscription_status
 from .tasks import process_face_scan
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 
 class ScanFaceView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @method_decorator(cache_page(60 * 15))
+    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()
         if not scan:

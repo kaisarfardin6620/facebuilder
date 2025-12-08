@@ -16,6 +16,9 @@ from authentication.utils import send_otp_via_twilio, verify_otp_via_twilio
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import IsAuthenticated
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 
 User = get_user_model()
 
@@ -116,6 +119,8 @@ class AdminResetPasswordConfirmView(APIView):
 class DashboardStatsView(APIView):
     permission_classes = [IsAdminUser]
 
+    @method_decorator(cache_page(60 * 15))
+    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         total_users = User.objects.filter(is_staff=False).count()
         total_scans = FaceScan.objects.count()
@@ -205,8 +210,7 @@ class LogoutView(APIView):
                 token.blacklist()
                 return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
             except TokenError as e:
-                # This will tell you EXACTLY why it failed (Expired? Wrong type?)
                 return Response({"error": f"Token Error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)    
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

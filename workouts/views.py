@@ -11,12 +11,17 @@ from django.utils import timezone
 import datetime
 from payments.services import verify_subscription_status
 from .utils import update_plan_difficulty
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 
 User = get_user_model()
 
 class MyPlanView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @method_decorator(cache_page(60 * 15))
+    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         is_premium = verify_subscription_status(request.user)
         if not is_premium:
@@ -57,6 +62,8 @@ class CompleteSessionView(APIView):
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @method_decorator(cache_page(60 * 15))
+    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         is_premium = verify_subscription_status(request.user)
         if not is_premium:
