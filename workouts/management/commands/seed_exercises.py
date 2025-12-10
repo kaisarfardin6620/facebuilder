@@ -7,7 +7,7 @@ from workouts.models import Exercise
 from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Populate the DB with 25 exercises per category, 5 steps each'
+    help = 'Populate DB with 25 REALISTIC exercises per category'
 
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
@@ -22,38 +22,40 @@ class Command(BaseCommand):
 
         for category in categories:
             current_count = Exercise.objects.filter(target_metric=category).count()
-            
             self.stdout.write(f"Checking {category}: Have {current_count}/{target_per_category}")
 
             while current_count < target_per_category:
                 needed = target_per_category - current_count
-                batch_size = min(5, needed)
+                batch_size = min(10, needed)
 
-                self.stdout.write(f" -> Fetching {batch_size} new {category} exercises...")
+                self.stdout.write(f" -> Fetching {batch_size} REALISTIC {category} exercises...")
 
                 prompt = f"""
-                Generate a JSON list of {batch_size} UNIQUE facial fitness exercises specifically for: {category}.
+                Generate a JSON list of {batch_size} PROFESSIONAL, ANATOMICALLY ACCURATE facial exercises for: {category}.
                 
-                Structure:
+                DO NOT use generic names like "Jaw Jolt". 
+                USE names like: "Masseter Release", "Platysma Stretch", "Nasolabial Lift", "Lymphatic Drainage Sweep".
+                
+                Strict Schema:
                 [
                     {{
-                        "name": "Creative Name",
-                        "description": "Short summary",
+                        "name": "Professional Name",
+                        "description": "Clinical benefit summary",
                         "instructions": ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"],
                         "default_sets": 3 (integer),
                         "type": "REPS" or "DURATION",
-                        "value": 10 (integer, if type is REPS this means 10 reps, if DURATION this means 10 seconds),
+                        "value": 10 (integer, e.g. 10 reps or 10 seconds),
                         "target_metric": "{category}"
                     }}
                 ]
-                Return ONLY raw JSON. No markdown. Make sure there are exactly 5 instruction steps.
+                Return ONLY raw JSON. Make sure there are exactly 5 instruction steps.
                 """
 
                 try:
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
-                            {"role": "system", "content": "You are a fitness API that outputs raw JSON."},
+                            {"role": "system", "content": "You are a professional facial fitness instructor."},
                             {"role": "user", "content": prompt}
                         ]
                     )
@@ -81,31 +83,21 @@ class Command(BaseCommand):
                     for item in final_list:
                         name = item.get('name', 'Unknown')
                         if not Exercise.objects.filter(name=name).exists():
-                            
                             is_duration = item.get('type') == 'DURATION'
                             val = int(item.get('value', 10))
                             
-                            def_reps = 0
-                            def_dur = 0
-                            
-                            if is_duration:
-                                def_dur = val
-                            else:
-                                def_reps = val
-
                             Exercise.objects.create(
                                 name=name,
                                 description=item.get('description', ''),
                                 instructions=item.get('instructions', []),
-                                default_reps=def_reps,
-                                default_duration=def_dur,
-                                default_sets=item.get('default_sets', 3),
+                                default_reps=0 if is_duration else val,
+                                default_duration=val if is_duration else 0,
+                                default_sets=int(item.get('default_sets', 3)),
                                 target_metric=category
                             )
                             added_count += 1
                     
                     self.stdout.write(self.style.SUCCESS(f"    + Added {added_count} exercises."))
-                    
                     current_count = Exercise.objects.filter(target_metric=category).count()
                     time.sleep(1)
 
