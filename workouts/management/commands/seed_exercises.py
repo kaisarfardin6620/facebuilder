@@ -7,7 +7,7 @@ from workouts.models import Exercise
 from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Populate DB with 25 REALISTIC exercises per category'
+    help = 'Populate DB with REALISTIC exercises (Breaks if AI gets stuck)'
 
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
@@ -23,8 +23,14 @@ class Command(BaseCommand):
         for category in categories:
             current_count = Exercise.objects.filter(target_metric=category).count()
             self.stdout.write(f"Checking {category}: Have {current_count}/{target_per_category}")
+            
+            consecutive_fails = 0 
 
             while current_count < target_per_category:
+                if consecutive_fails >= 3:
+                    self.stdout.write(self.style.WARNING(f"AI stuck on {category}. Moving to next."))
+                    break
+
                 needed = target_per_category - current_count
                 batch_size = min(10, needed)
 
@@ -98,6 +104,12 @@ class Command(BaseCommand):
                             added_count += 1
                     
                     self.stdout.write(self.style.SUCCESS(f"    + Added {added_count} exercises."))
+                    
+                    if added_count == 0:
+                        consecutive_fails += 1
+                    else:
+                        consecutive_fails = 0
+                    
                     current_count = Exercise.objects.filter(target_metric=category).count()
                     time.sleep(1)
 
