@@ -7,7 +7,7 @@ from workouts.models import Exercise
 from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Populate DB with REALISTIC exercises (Breaks if AI gets stuck)'
+    help = 'Populate DB with REALISTIC exercises and the mandatory Finisher'
 
     def handle(self, *args, **kwargs):
         api_key = settings.OPENAI_API_KEY
@@ -116,6 +116,25 @@ class Command(BaseCommand):
                 except Exception as e:
                     self.stdout.write(self.style.ERROR(f"Error: {str(e)}"))
                     break
+
+        Exercise.objects.update_or_create(
+            name="Lymphatic Drainage",
+            defaults={
+                "target_metric": "GENERAL",
+                "description": "A cooling down massage to reduce puffiness and improve circulation.",
+                "instructions": [
+                    "Sweep cheeks up toward temples.",
+                    "Sweep along jawline to ears.",
+                    "Sweep under chin down the neck.",
+                    "Use light, gentle pressure.",
+                    "Repeat for the duration."
+                ],
+                "default_sets": 1,
+                "default_reps": 0,
+                "default_duration": 30
+            }
+        )
+        self.stdout.write(self.style.SUCCESS("    + Added/Updated 'Lymphatic Drainage' finisher."))
 
         total = Exercise.objects.count()
         self.stdout.write(self.style.SUCCESS(f"DONE! Total exercises in DB: {total}"))

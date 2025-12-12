@@ -59,23 +59,39 @@ def generate_workout_plan(user, scan_data, user_goals):
 
     plan = WorkoutPlan.objects.create(user=user, difficulty_level=1, is_active=True)
 
+    selected_metrics = []
+    if user_goals.wants_sharper_jawline:
+        selected_metrics.append('JAWLINE')
+    if user_goals.wants_reduce_puffiness:
+        selected_metrics.append('PUFFINESS')
+    if user_goals.wants_improve_symmetry:
+        selected_metrics.append('SYMMETRY')
+
+    if not selected_metrics:
+        selected_metrics.append('GENERAL')
+
+    total_needed = 5
+    goal_count = len(selected_metrics)
+    base_count = total_needed // goal_count
+    remainder = total_needed % goal_count
+
     exercises_to_add = []
 
-    if user_goals.wants_sharper_jawline:
-        exs = list(Exercise.objects.filter(target_metric='JAWLINE').order_by('?')[:8])
-        exercises_to_add.extend(exs)
+    finisher = Exercise.objects.filter(name="Lymphatic Drainage").first()
+    
+    base_query = Exercise.objects.exclude(name="Lymphatic Drainage")
+
+    for i, metric in enumerate(selected_metrics):
+        count_for_this = base_count
+        if i < remainder:
+            count_for_this += 1
         
-    if user_goals.wants_reduce_puffiness:
-        exs = list(Exercise.objects.filter(target_metric='PUFFINESS').order_by('?')[:8])
-        exercises_to_add.extend(exs)
-        
-    if user_goals.wants_improve_symmetry:
-        exs = list(Exercise.objects.filter(target_metric='SYMMETRY').order_by('?')[:8])
+        exs = list(base_query.filter(target_metric=metric).order_by('?')[:count_for_this])
         exercises_to_add.extend(exs)
 
-    if len(exercises_to_add) < 8:
-        needed = 8 - len(exercises_to_add)
-        general = list(Exercise.objects.filter(target_metric='GENERAL').order_by('?')[:needed])
+    if len(exercises_to_add) < total_needed:
+        needed = total_needed - len(exercises_to_add)
+        general = list(base_query.filter(target_metric='GENERAL').order_by('?')[:needed])
         exercises_to_add.extend(general)
 
     unique_exercises = []
@@ -84,6 +100,9 @@ def generate_workout_plan(user, scan_data, user_goals):
         if ex.id not in seen_ids:
             unique_exercises.append(ex)
             seen_ids.add(ex.id)
+
+    if finisher:
+        unique_exercises.append(finisher)
 
     order_counter = 1
     for ex in unique_exercises:
