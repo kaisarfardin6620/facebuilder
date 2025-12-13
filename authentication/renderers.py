@@ -11,13 +11,25 @@ class CustomJSONRenderer(JSONRenderer):
             if 'message' in data:
                 message = data.pop('message')
             
-            if 'error' in data:
+            elif 'error' in data:
                 message = data.pop('error')
                 success = False
                 
-            if 'detail' in data:
+            elif 'detail' in data:
                 message = data.pop('detail')
                 success = False
+            
+            elif not success:
+                try:
+                    first_key = next(iter(data))
+                    error_content = data[first_key]
+                    
+                    if isinstance(error_content, list) and len(error_content) > 0:
+                        message = str(error_content[0])
+                    else:
+                        message = str(error_content)
+                except Exception:
+                    pass
 
         response_data = {
             "success": success,
