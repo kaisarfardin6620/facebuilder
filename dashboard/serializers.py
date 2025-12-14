@@ -46,16 +46,19 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
         return sub.plan_name if sub else "Free"
 
 class AdminProfileSerializer(serializers.ModelSerializer):
-    profile_picture = serializers.SerializerMethodField()
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = User
         fields = ['name', 'phone_number', 'profile_picture']
 
-    def get_profile_picture(self, obj):
-        if obj.profile_picture:
-            return f"{settings.SERVER_BASE_URL}{obj.profile_picture.url}"
-        return None
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        if instance.profile_picture:
+            image_url = instance.profile_picture.url
+            if not image_url.startswith('http'):
+                representation['profile_picture'] = f"{settings.SERVER_BASE_URL}{image_url}"
+        return representation
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)

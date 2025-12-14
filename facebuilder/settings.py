@@ -54,7 +54,7 @@ REVENUECAT_API_KEY = os.getenv('REVENUECAT_API_KEY')
 REVENUECAT_BASE_URL = "https://api.revenuecat.com/v1"
 REVENUECAT_ENTITLEMENT_IDS = os.getenv('REVENUECAT_ENTITLEMENT_IDS', 'monthly,sixmonthly,yearly').split(',')
 
-DEFAULT_FILE_STORAGE = 'db_file_storage.storage.DatabaseFileStorage'
+#DEFAULT_FILE_STORAGE = 'db_file_storage.storage.DatabaseFileStorage'
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
