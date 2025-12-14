@@ -2,15 +2,21 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
 from .models import FaceScan, UserGoal
 from .serializers import FaceScanSerializer, SetGoalsSerializer
 from workouts.utils import generate_workout_plan
 from payments.services import verify_subscription_status
-from .ai_logic import analyze_face_image
+from .ai_logic import analyze_face_image  # Direct import for synchronous processing
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 
 class ScanFaceView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @method_decorator(cache_page(60 * 1))
+    @method_decorator(vary_on_headers('Authorization'))
     def get(self, request):
         scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()
         if not scan:
@@ -26,34 +32,28 @@ class ScanFaceView(APIView):
         image_file = request.FILES['image']
         
         try:
-            raw_metrics = analyze_face_image(image_file)
+            new_metrics = analyze_face_image(image_file)
             
             last_scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()
             
-            final_metrics = raw_metrics.copy()
+            final_metrics = new_metrics.copy()
 
             if last_scan:
-                def smooth_value(new_val, old_val):
-                    if old_val is None:
-                        return new_val
-                        
-                    if abs(new_val - old_val) > (old_val * 0.10):
-                        return new_val
-                    
-                    return (old_val * 0.7) + (new_val * 0.3)
-
-                final_metrics['jawline_angle'] = smooth_value(raw_metrics['jawline_angle'], last_scan.jawline_angle)
-                final_metrics['symmetry_score'] = smooth_value(raw_metrics['symmetry_score'], last_scan.symmetry_score)
-                final_metrics['puffiness_index'] = smooth_value(raw_metrics['puffiness_index'], last_scan.puffiness_index)
+                time_diff = timezone.now() - last_scan.created_at
+                
+                if time_diff.total_seconds() < 600:
+                    final_metrics['jawline_angle'] = last_scan.jawline_angle
+                    final_metrics['symmetry_score'] = last_scan.symmetry_score
+                    final_metrics['puffiness_index'] = last_scan.puffiness_index
 
             image_file.seek(0)
             scan = FaceScan.objects.create(
                 user=request.user,
                 image=image_file,
                 status='COMPLETED',
-                jawline_angle=round(final_metrics['jawline_angle'], 1),
-                symmetry_score=round(final_metrics['symmetry_score'], 1),
-                puffiness_index=round(final_metrics['puffiness_index'], 2)
+                jawline_angle=final_metrics['jawline_angle'],
+                symmetry_score=final_metrics['symmetry_score'],
+                puffiness_index=final_metrics['puffiness_index']
             )
             
             serializer_data = FaceScanSerializer(scan).data
