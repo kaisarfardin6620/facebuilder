@@ -47,7 +47,7 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
 class AdminProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['name', 'phone_number']
+        fields = ['name', 'phone_number', 'profile_picture']
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
