@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from .models import Subscription
 from scans.models import FaceScan, UserGoal
 from scans.serializers import FaceScanSerializer, UserGoalSerializer
@@ -45,14 +46,20 @@ class AdminUserDetailSerializer(serializers.ModelSerializer):
         return sub.plan_name if sub else "Free"
 
 class AdminProfileSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = ['name', 'phone_number', 'profile_picture']
+
+    def get_profile_picture(self, obj):
+        if obj.profile_picture:
+            return f"{settings.SERVER_BASE_URL}{obj.profile_picture.url}"
+        return None
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
 
-
 class LogoutSerializer(serializers.Serializer):
-    refresh = serializers.CharField()    
+    refresh = serializers.CharField()
