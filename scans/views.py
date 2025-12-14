@@ -6,7 +6,7 @@ from .models import FaceScan, UserGoal
 from .serializers import FaceScanSerializer, SetGoalsSerializer
 from workouts.utils import generate_workout_plan
 from payments.services import verify_subscription_status
-from .tasks import process_face_scan
+from .ai_logic import analyze_face_image
 
 class ScanFaceView(APIView):
     permission_classes = [IsAuthenticated]
@@ -26,22 +26,50 @@ class ScanFaceView(APIView):
         image_file = request.FILES['image']
         
         try:
+            raw_metrics = analyze_face_image(image_file)
+            
+            last_scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()
+            
+            final_metrics = raw_metrics.copy()
+
+            if last_scan:
+                def smooth_value(new_val, old_val):
+                    if old_val is None:
+                        return new_val
+                        
+                    if abs(new_val - old_val) > (old_val * 0.10):
+                        return new_val
+                    
+                    return (old_val * 0.7) + (new_val * 0.3)
+
+                final_metrics['jawline_angle'] = smooth_value(raw_metrics['jawline_angle'], last_scan.jawline_angle)
+                final_metrics['symmetry_score'] = smooth_value(raw_metrics['symmetry_score'], last_scan.symmetry_score)
+                final_metrics['puffiness_index'] = smooth_value(raw_metrics['puffiness_index'], last_scan.puffiness_index)
+
+            image_file.seek(0)
             scan = FaceScan.objects.create(
                 user=request.user,
                 image=image_file,
-                status='PENDING'
+                status='COMPLETED',
+                jawline_angle=round(final_metrics['jawline_angle'], 1),
+                symmetry_score=round(final_metrics['symmetry_score'], 1),
+                puffiness_index=round(final_metrics['puffiness_index'], 2)
             )
-            process_face_scan.delay(scan.id)
             
             serializer_data = FaceScanSerializer(scan).data
 
             return Response({
-                "message": "Scan uploaded. Processing started.",
+                "message": "Scan complete.",
                 "scan_data": serializer_data
-            }, status=status.HTTP_202_ACCEPTED)
+            }, status=status.HTTP_201_CREATED)
 
+        except ValueError as e:
+            return Response({
+                "error": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
         except Exception as e:
-            return Response({"error": "Upload failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Processing failed", "details": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class SetGoalsView(APIView):
