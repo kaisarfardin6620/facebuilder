@@ -8,6 +8,7 @@ from openai import OpenAI
 from .models import ChatMessage
 from .serializers import ChatMessageSerializer
 from payments.services import verify_subscription_status
+from .prompts import FACECOACH_KNOWLEDGE_BASE
 
 class ChatCoachView(APIView):
     permission_classes = [IsAuthenticated]
@@ -35,9 +36,16 @@ class ChatCoachView(APIView):
         
         context_str = "User Data: "
         if scan:
-            context_str += f"Jawline Angle: {scan.jawline_angle}, Symmetry: {scan.symmetry_score}%. "
+            context_str += f"Jawline Angle: {scan.jawline_angle}, Symmetry: {scan.symmetry_score}%, Puffiness: {scan.puffiness_index}. "
         if goal:
-            context_str += f"Targets: Jaw {goal.target_jawline}. "
+            context_str += f"Targets: Jaw {goal.target_jawline}, Sym {goal.target_symmetry}. "
+
+        system_instruction = f"""
+        {FACECOACH_KNOWLEDGE_BASE}
+        
+        CURRENT USER STATS:
+        {context_str}
+        """
 
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
@@ -45,7 +53,7 @@ class ChatCoachView(APIView):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"You are FaceCoach. User stats: {context_str}. Keep answers short."},
+                    {"role": "system", "content": system_instruction},
                     {"role": "user", "content": user_message}
                 ]
             )
