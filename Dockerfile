@@ -4,7 +4,6 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
-
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
@@ -23,7 +22,6 @@ RUN useradd -m appuser
 COPY entrypoint.sh /entrypoint.sh
 
 RUN sed -i 's/\r$//' /entrypoint.sh
-
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /app/media /app/staticfiles && \
