@@ -21,11 +21,13 @@ COPY . /app/
 RUN useradd -m appuser
 
 COPY entrypoint.sh /entrypoint.sh
+
+RUN sed -i 's/\r$//' /entrypoint.sh
+
 RUN chmod +x /entrypoint.sh
 
 RUN mkdir -p /app/media /app/staticfiles && \
     chown -R appuser:appuser /app/media /app/staticfiles
-
 
 ENTRYPOINT ["/entrypoint.sh"]
 
