@@ -85,7 +85,7 @@ def analyze_face_image(image_file):
             total_deviation += diff
 
         avg_deviation = total_deviation / len(pairs)
-        symmetry_score = max(0, 100 - (avg_deviation * 100 * 2))
+        symmetry_score = max(10, 100 - (avg_deviation * 50))
         cheek_width = get_distance(get_coords(234), get_coords(454))
         jaw_width = get_distance(get_coords(172), get_coords(397))
         puffiness_index = cheek_width / jaw_width
