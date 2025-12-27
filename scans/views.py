@@ -38,13 +38,13 @@ class ScanFaceView(APIView):
             
             final_metrics = new_metrics.copy()
 
-            if last_scan:
-                time_diff = timezone.now() - last_scan.created_at
+            # if last_scan:
+            #     time_diff = timezone.now() - last_scan.created_at
                 
-                if time_diff.total_seconds() < 600:
-                    final_metrics['jawline_angle'] = last_scan.jawline_angle
-                    final_metrics['symmetry_score'] = last_scan.symmetry_score
-                    final_metrics['puffiness_index'] = last_scan.puffiness_index
+            #     if time_diff.total_seconds() < 600:
+            #         final_metrics['jawline_angle'] = last_scan.jawline_angle
+            #         final_metrics['symmetry_score'] = last_scan.symmetry_score
+            #         final_metrics['puffiness_index'] = last_scan.puffiness_index
 
             image_file.seek(0)
             scan = FaceScan.objects.create(
