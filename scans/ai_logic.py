@@ -22,6 +22,16 @@ def analyze_face_image(image_file):
     if image is None:
         raise ValueError("Could not decode image")
 
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    brightness = cv2.mean(gray)[0]
+    if brightness < 80:
+        raise ValueError("Lighting is too dark. Please face a light source.")
+
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    if variance < 100:
+        raise ValueError("Image is too blurry. Please hold the camera steady.")
+
     height, width, _ = image.shape
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
@@ -40,6 +50,25 @@ def analyze_face_image(image_file):
             raise ValueError("No face detected. Please ensure your face is clearly visible.")
             
         landmarks = results.multi_face_landmarks[0].landmark
+
+        nose_tip = landmarks[1].x
+        left_cheek_outer = landmarks[234].x
+        right_cheek_outer = landmarks[454].x
+
+        left_dist = abs(nose_tip - left_cheek_outer)
+        right_dist = abs(nose_tip - right_cheek_outer)
+        
+        if right_dist > 0:
+            ratio = left_dist / right_dist
+            if ratio < 0.6 or ratio > 1.6:
+                raise ValueError("Please look straight at the camera. Do not turn your head.")
+
+        left_eye_y = landmarks[33].y
+        right_eye_y = landmarks[263].y
+        
+        eye_slope = abs(left_eye_y - right_eye_y)
+        if eye_slope > 0.05:
+            raise ValueError("Please keep your head level. Do not tilt.")
 
         x_values = [lm.x for lm in landmarks]
         y_values = [lm.y for lm in landmarks]

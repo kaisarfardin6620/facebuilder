@@ -7,7 +7,7 @@ from .models import FaceScan, UserGoal
 from .serializers import FaceScanSerializer, SetGoalsSerializer
 from workouts.utils import generate_workout_plan
 from payments.services import verify_subscription_status
-from .ai_logic import analyze_face_image  # Direct import for synchronous processing
+from .ai_logic import analyze_face_image 
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_headers
@@ -22,7 +22,7 @@ class ScanFaceView(APIView):
         if not scan:
             return Response({"message": "No scans found"}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer_data = FaceScanSerializer(scan).data
+        serializer_data = FaceScanSerializer(scan, context={'request': request}).data
         return Response(serializer_data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -34,29 +34,31 @@ class ScanFaceView(APIView):
         try:
             new_metrics = analyze_face_image(image_file)
             
-            last_scan = FaceScan.objects.filter(user=request.user).order_by('-created_at').first()
+            last_scan = FaceScan.objects.filter(
+                user=request.user, 
+                status='COMPLETED'
+            ).exclude(jawline_angle__isnull=True).order_by('-created_at').first()
             
-            final_metrics = new_metrics.copy()
+            final_jawline = new_metrics['jawline_angle']
+            final_symmetry = new_metrics['symmetry_score']
+            final_puffiness = new_metrics['puffiness_index']
 
-            # if last_scan:
-            #     time_diff = timezone.now() - last_scan.created_at
-                
-            #     if time_diff.total_seconds() < 600:
-            #         final_metrics['jawline_angle'] = last_scan.jawline_angle
-            #         final_metrics['symmetry_score'] = last_scan.symmetry_score
-            #         final_metrics['puffiness_index'] = last_scan.puffiness_index
+            if last_scan:
+                final_jawline = (final_jawline * 0.7) + (last_scan.jawline_angle * 0.3)
+                final_symmetry = (final_symmetry * 0.7) + (last_scan.symmetry_score * 0.3)
+                final_puffiness = (final_puffiness * 0.7) + (last_scan.puffiness_index * 0.3)
 
             image_file.seek(0)
             scan = FaceScan.objects.create(
                 user=request.user,
                 image=image_file,
                 status='COMPLETED',
-                jawline_angle=final_metrics['jawline_angle'],
-                symmetry_score=final_metrics['symmetry_score'],
-                puffiness_index=final_metrics['puffiness_index']
+                jawline_angle=round(final_jawline, 1),
+                symmetry_score=round(final_symmetry, 1),
+                puffiness_index=round(final_puffiness, 2)
             )
             
-            serializer_data = FaceScanSerializer(scan).data
+            serializer_data = FaceScanSerializer(scan, context={'request': request}).data
 
             return Response({
                 "message": "Scan complete.",
