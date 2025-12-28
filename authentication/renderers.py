@@ -10,26 +10,24 @@ class CustomJSONRenderer(JSONRenderer):
         if isinstance(data, dict):
             if 'message' in data:
                 message = data.pop('message')
-            
             elif 'error' in data:
                 message = data.pop('error')
                 success = False
-                
             elif 'detail' in data:
                 message = data.pop('detail')
                 success = False
-            
             elif not success:
                 try:
                     first_key = next(iter(data))
                     error_content = data[first_key]
-                    
-                    if isinstance(error_content, list) and len(error_content) > 0:
+                    if isinstance(error_content, list):
                         message = str(error_content[0])
+                    elif isinstance(error_content, dict):
+                        message = str(next(iter(error_content.values())))
                     else:
                         message = str(error_content)
                 except Exception:
-                    pass
+                    message = "An error occurred"
 
         response_data = {
             "success": success,

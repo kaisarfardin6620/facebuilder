@@ -7,6 +7,7 @@ from dashboard.models import Subscription, PaymentHistory
 from datetime import datetime
 from django.utils.decorators import method_decorator 
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 from .services import manual_sync_revenuecat, verify_subscription_status
 
 User = get_user_model()
@@ -16,16 +17,9 @@ class TestRevenueCatConnection(APIView):
 
     def get(self, request):
         is_active = verify_subscription_status(request.user)
-
-        if is_active:
-            return Response({
-                "message": "User has active Premium subscription.",
-                "is_premium": True
-            }, status=status.HTTP_200_OK)
-        
         return Response({
-            "message": "User does NOT have active subscription.",
-            "is_premium": False
+            "message": "User has active Premium subscription." if is_active else "User does NOT have active subscription.",
+            "is_premium": is_active
         }, status=status.HTTP_200_OK)
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -34,6 +28,12 @@ class RevenueCatWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        auth_header = request.headers.get('Authorization')
+        expected_token = f"Bearer {settings.REVENUECAT_WEBHOOK_SECRET}"
+        
+        if not settings.DEBUG and auth_header != expected_token:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
         event = request.data.get('event', {})
         event_type = event.get('type')
         event_id = event.get('id')
@@ -79,19 +79,13 @@ class RevenueCatWebhookView(APIView):
                         )
 
             elif event_type in ['CANCELLATION', 'EXPIRATION', 'billing_issue']:
-                try:
-                    sub = Subscription.objects.get(user=user)
-                    sub.is_active = False
-                    sub.save()
-                except Subscription.DoesNotExist:
-                    pass
+                Subscription.objects.filter(user=user).update(is_active=False)
 
             return Response({"message": "Webhook processed"}, status=status.HTTP_200_OK)
 
         except User.DoesNotExist:
             return Response({"message": "User not found, ignoring"}, status=status.HTTP_200_OK)
         except Exception as e:
-            print(f"Webhook Error: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SyncSubscriptionView(APIView):
@@ -99,14 +93,8 @@ class SyncSubscriptionView(APIView):
 
     def post(self, request):
         is_premium = manual_sync_revenuecat(request.user)
-        
-        if is_premium:
-            return Response({
-                "message": "Subscription synced. You are Premium.",
-                "is_premium": True
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                "message": "Subscription synced. No active premium plan found.",
-                "is_premium": False
-            }, status=status.HTTP_200_OK)
+        message = "Subscription synced. You are Premium." if is_premium else "Subscription synced. No active premium plan found."
+        return Response({
+            "message": message,
+            "is_premium": is_premium
+        }, status=status.HTTP_200_OK)

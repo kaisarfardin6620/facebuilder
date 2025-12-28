@@ -7,7 +7,6 @@ from dashboard.models import Subscription
 def verify_subscription_status(user):
     try:
         sub = Subscription.objects.filter(user=user).first()
-
         if sub and sub.is_active:
             if sub.expiry_date:
                 if sub.expiry_date > timezone.now():
@@ -19,7 +18,6 @@ def verify_subscription_status(user):
             return True
     except Exception:
         return False
-
     return False
 
 def manual_sync_revenuecat(user):
@@ -33,7 +31,7 @@ def manual_sync_revenuecat(user):
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=5)
         if response.status_code != 200:
             return False
 

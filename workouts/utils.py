@@ -6,12 +6,10 @@ def swap_exercise(plan_exercise):
     plan = plan_exercise.plan
     
     existing_ids = plan.exercises.values_list('exercise_id', flat=True)
-    
     candidates = Exercise.objects.filter(target_metric=current_ex.target_metric).exclude(id__in=existing_ids)
     
     if candidates.exists():
         new_exercise = random.choice(list(candidates))
-        
         plan_exercise.exercise = new_exercise
         plan_exercise.sets = new_exercise.default_sets
         
@@ -32,10 +30,8 @@ def update_plan_difficulty(plan):
         
         if plan_ex.duration and plan_ex.duration > 0:
             new_duration = plan_ex.exercise.default_duration + (increased * 5)
-            
             if new_duration >= 60:
-                swapped = swap_exercise(plan_ex)
-                if not swapped:
+                if not swap_exercise(plan_ex):
                     plan_ex.duration = 60
                     plan_ex.save()
             else:
@@ -44,10 +40,8 @@ def update_plan_difficulty(plan):
                 
         elif plan_ex.reps and plan_ex.reps > 0:
             new_reps = plan_ex.exercise.default_reps + increased
-            
             if new_reps >= 12:
-                swapped = swap_exercise(plan_ex)
-                if not swapped:
+                if not swap_exercise(plan_ex):
                     plan_ex.reps = 12
                     plan_ex.save()
             else:
@@ -75,24 +69,31 @@ def generate_workout_plan(user, scan_data, user_goals):
     base_count = total_needed // goal_count
     remainder = total_needed % goal_count
 
-    exercises_to_add = []
+    all_exercises = list(Exercise.objects.all())
+    exercises_by_metric = {}
+    for ex in all_exercises:
+        if ex.name == "Lymphatic Drainage":
+            continue
+        if ex.target_metric not in exercises_by_metric:
+            exercises_by_metric[ex.target_metric] = []
+        exercises_by_metric[ex.target_metric].append(ex)
 
-    finisher = Exercise.objects.filter(name="Lymphatic Drainage").first()
-    
-    base_query = Exercise.objects.exclude(name="Lymphatic Drainage")
+    exercises_to_add = []
+    finisher = next((ex for ex in all_exercises if ex.name == "Lymphatic Drainage"), None)
 
     for i, metric in enumerate(selected_metrics):
-        count_for_this = base_count
-        if i < remainder:
-            count_for_this += 1
-        
-        exs = list(base_query.filter(target_metric=metric).order_by('?')[:count_for_this])
-        exercises_to_add.extend(exs)
+        count_for_this = base_count + (1 if i < remainder else 0)
+        available = exercises_by_metric.get(metric, [])
+        if available:
+            random.shuffle(available)
+            exercises_to_add.extend(available[:count_for_this])
 
     if len(exercises_to_add) < total_needed:
         needed = total_needed - len(exercises_to_add)
-        general = list(base_query.filter(target_metric='GENERAL').order_by('?')[:needed])
-        exercises_to_add.extend(general)
+        general = exercises_by_metric.get('GENERAL', [])
+        if general:
+            random.shuffle(general)
+            exercises_to_add.extend(general[:needed])
 
     unique_exercises = []
     seen_ids = set()
@@ -106,13 +107,8 @@ def generate_workout_plan(user, scan_data, user_goals):
 
     order_counter = 1
     for ex in unique_exercises:
-        duration_val = 0
-        reps_val = 0
-        
-        if ex.default_duration and ex.default_duration > 0:
-            duration_val = ex.default_duration
-        else:
-            reps_val = ex.default_reps
+        duration_val = ex.default_duration if ex.default_duration else 0
+        reps_val = ex.default_reps if not duration_val else 0
 
         PlanExercise.objects.create(
             plan=plan,

@@ -9,20 +9,18 @@ from workouts.models import WorkoutSession
 User = get_user_model()
 
 class AdminUserListSerializer(serializers.ModelSerializer):
-    scans_count = serializers.SerializerMethodField()
+    scans_count = serializers.IntegerField(read_only=True)
     current_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ['id', 'name', 'phone_number', 'date_joined', 'is_active', 'scans_count', 'current_plan']
 
-    def get_scans_count(self, obj):
-        return FaceScan.objects.filter(user=obj).count()
-
     def get_current_plan(self, obj):
-        sub = Subscription.objects.filter(user=obj, is_active=True).first()
-        if sub:
-            return sub.plan_name 
+        if hasattr(obj, 'subscriptions'):
+            subs = list(obj.subscriptions.all())
+            if subs:
+                return subs[0].plan_name
         return "Free"
 
 class AdminUserDetailSerializer(serializers.ModelSerializer):

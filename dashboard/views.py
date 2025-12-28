@@ -1,11 +1,10 @@
-from tokenize import TokenError
 from rest_framework.views import APIView
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Sum
+from django.db.models import Count, Sum, Prefetch
 from django.db.models.functions import TruncMonth
 from .models import Subscription, PaymentHistory
 from .serializers import *
@@ -152,9 +151,14 @@ class DashboardStatsView(APIView):
 
 class UserManagementViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
-    queryset = User.objects.filter(is_staff=False).order_by('-date_joined')
-    http_method_names = ['get', 'delete', 'head', 'options']
     
+    queryset = User.objects.filter(is_staff=False).annotate(
+        scans_count=Count('scans')
+    ).prefetch_related(
+        Prefetch('subscriptions', queryset=Subscription.objects.filter(is_active=True))
+    ).order_by('-date_joined')
+
+    http_method_names = ['get', 'delete', 'head', 'options']
     pagination_class = DashboardPagination
     filter_backends = [SearchFilter]
     search_fields = ['name', 'phone_number']
@@ -209,8 +213,6 @@ class LogoutView(APIView):
                 token = RefreshToken(refresh_token)
                 token.blacklist()
                 return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
-            except TokenError as e:
-                return Response({"error": f"Token Error: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

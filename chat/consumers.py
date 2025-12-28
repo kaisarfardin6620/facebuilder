@@ -68,22 +68,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         system_instruction = f"""
         {FACECOACH_KNOWLEDGE_BASE}
-        
-        CURRENT USER STATS:
-        {context_str}
+        User Stats: {context_str}
+        Keep answers short and based on Knowledge Base.
         """
 
-        messages_payload = [
-            {"role": "system", "content": system_instruction}
-        ]
-        
+        messages_payload = [{"role": "system", "content": system_instruction}]
         messages_payload.extend(recent_history)
         messages_payload.append({"role": "user", "content": user_message})
 
         try:
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=messages_payload
+                messages=messages_payload,
+                max_tokens=300
             )
             ai_reply = response.choices[0].message.content
             await self.save_message(self.user, 'AI', ai_reply)
@@ -115,7 +112,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_recent_messages_for_ai(self):
-        msgs = ChatMessage.objects.filter(user=self.user).order_by('-created_at')[:10]
+        msgs = ChatMessage.objects.filter(user=self.user).order_by('-created_at')[:6]
         history = []
         for msg in reversed(msgs):
             role = "user" if msg.sender == "USER" else "assistant"
@@ -128,7 +125,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         goal = UserGoal.objects.filter(user=self.user).first()
         context = ""
         if scan:
-            context += f"Jaw: {scan.jawline_angle}, Sym: {scan.symmetry_score}%. "
+            context += f"Jaw:{scan.jawline_angle},Sym:{scan.symmetry_score}%. "
         if goal:
-            context += f"Targets: Jaw {goal.target_jawline}. "
+            context += f"GoalJaw:{goal.target_jawline}. "
         return context
