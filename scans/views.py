@@ -57,6 +57,14 @@ class ScanFaceView(APIView):
                 symmetry_score=round(final_symmetry, 1),
                 puffiness_index=round(final_puffiness, 2)
             )
+            UserGoal.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    'target_jawline': round(final_jawline * 0.95, 1),
+                    'target_symmetry': min(100, round(final_symmetry * 1.10, 1)),                   
+                    'target_puffiness': 0.20
+                }
+            )
             
             serializer_data = FaceScanSerializer(scan, context={'request': request}).data
 
