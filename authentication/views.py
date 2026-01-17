@@ -174,3 +174,31 @@ class ResendOTPView(APIView):
                 return Response({"error": "Failed to send SMS."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        serializer = DeleteAccountSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            password = serializer.validated_data['password']
+            if not user.check_password(password):
+                return Response(
+                    {"error": "Incorrect password. Account deletion failed."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                user.delete()
+                return Response(
+                    {"message": "Account has been permanently deleted."}, 
+                    status=status.HTTP_200_OK
+                )
+            except Exception as e:
+                return Response(
+                    {"error": "An error occurred while deleting the account.", "details": str(e)}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)        
